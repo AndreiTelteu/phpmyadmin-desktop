@@ -97,7 +97,6 @@ func main() {
 		opts.Windows.WebviewIsTransparent = false
 		opts.Windows.WindowIsTranslucent = false
 		opts.Windows.BackdropType = windows.None
-
 	}
 
 	err = wails.Run(opts)

@@ -18,6 +18,9 @@ func NewApp(serverId string) *App {
 		serverId: serverId,
 	}
 }
+func (a *App) GetServerID() string {
+	return a.serverId
+}
 
 // startup is called at application startup
 func (a *App) startup(ctx context.Context) {
