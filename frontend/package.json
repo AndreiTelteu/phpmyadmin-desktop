@@ -1,0 +1,23 @@
+{
+  "name": "phpmyadmin-desktop",
+  "version": "0.0.0",
+  "description": "",
+  "author": "Andrei Telteu <andrei@telteu.ro>",
+  "keywords": ["phpmyadmin", "mysql", "php", "solid", "go", "wails"],
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.8.2",
+    "vite": "^3.0.9",
+    "vite-plugin-solid": "^2.3.0"
+  },
+  "dependencies": {
+    "solid-js": "^1.8.11",
+    "solid-styled-components": "^0.28.5"
+  }
+}
