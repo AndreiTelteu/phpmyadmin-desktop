@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/wailsapp/wails/v2"
@@ -10,6 +11,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
+	wailsconfigstore "github.com/AndreiTelteu/wails-configstore"
 )
 
 //go:embed frontend/dist
@@ -24,6 +27,12 @@ var serverId = flag.String("serverId", "nil", "Server ID to open PMA for")
 func main() {
 	flag.Parse()
 	app := NewApp(*serverId)
+
+	configStore, err := wailsconfigstore.NewConfigStore("phpMyAdmin Desktop")
+	if err != nil {
+		fmt.Printf("could not initialize the config store: %v\n", err)
+		return
+	}
 
 	opts := &options.App{
 		Title:  "phpMyAdmin Desktop",
@@ -50,6 +59,7 @@ func main() {
 		WindowStartState:  options.Normal,
 		Bind: []interface{}{
 			app,
+			configStore,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
@@ -90,7 +100,7 @@ func main() {
 
 	}
 
-	err := wails.Run(opts)
+	err = wails.Run(opts)
 	if err != nil {
 		log.Fatal(err)
 	}

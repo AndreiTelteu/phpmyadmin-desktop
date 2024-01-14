@@ -5,7 +5,7 @@ declare global {
             DesktopVersion: string,
             PhpVersion: string | null,
             PhpMyAdminVersion: string | null,
-            
+            PMAThemes: string[],
         }
         
     }

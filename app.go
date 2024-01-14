@@ -42,7 +42,6 @@ func (a *App) shutdown(ctx context.Context) {
 	// Perform your teardown here
 }
 
-// Greet returns a greeting for the given name
 func (a *App) NewWindow(serverId string) error {
 	path, _ := os.Executable()
 

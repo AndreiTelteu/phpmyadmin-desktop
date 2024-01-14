@@ -1,6 +1,7 @@
 import type { Component } from 'solid-js';
 
 import { NewWindow } from '../wailsjs/go/main/App';
+import * as ConfigStore from '../wailsjs/go/wailsconfigstore/ConfigStore';
 
 const App: Component = () => {;
   return (
@@ -11,7 +12,13 @@ const App: Component = () => {;
         </p>
         <button
           onClick={() => {
-            NewWindow('dada');
+            // NewWindow('dada');
+            ConfigStore.Get('servers.json', 'null').then(res => {
+              console.log(res);
+            })
+            // ConfigStore.Set('servers.json', '[{}]').then(res => {
+            //   console.log(res);
+            // })
           }}
         >
           open pma
