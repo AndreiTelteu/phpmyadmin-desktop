@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/rgzr/sshtun"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -21,7 +22,6 @@ var assets embed.FS
 //go:embed build/appicon.png
 var icon []byte
 
-// TODO: Set default starting method.
 var serverId = flag.String("serverId", "nil", "Server ID to open PMA for")
 
 func main() {
@@ -91,7 +91,29 @@ func main() {
 		},
 	}
 	if serverId != nil && *serverId != "nil" {
-		opts.Title = "phpMyAdmin Desktop - " + *serverId
+		serverConfig := GetServersConfig(configStore)
+		selectedServer := serverConfig.FindById(*serverId)
+
+		opts.Title = "PMA " + *serverId
+		if selectedServer != nil {
+			opts.Title = "PMA " + selectedServer.Name
+			if selectedServer.Tunnel.Enabled {
+				opts.Title += " (tunnel)"
+				sshTun := sshtun.New(12345, selectedServer.Tunnel.Host, selectedServer.Port)
+				sshTun.SetRemoteHost(selectedServer.Host)
+				sshTun.SetPort(selectedServer.Tunnel.Port)
+				sshTun.SetUser(selectedServer.Tunnel.Username)
+				if selectedServer.Tunnel.AuthMethod == "password" {
+					sshTun.SetPassword(selectedServer.Tunnel.Password)
+				} else {
+					if selectedServer.Tunnel.Passphrase == "" {
+						sshTun.SetKeyFile(selectedServer.Tunnel.PrivateKey)
+					} else {
+						sshTun.SetEncryptedKeyFile(selectedServer.Tunnel.PrivateKey, selectedServer.Tunnel.Passphrase)
+					}
+				}
+			}
+		}
 		opts.Width = 1024
 		opts.Height = 768
 		opts.Windows.WebviewIsTransparent = false

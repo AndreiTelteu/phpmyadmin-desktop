@@ -24,6 +24,7 @@
     "vite-plugin-solid": "^2.3.0"
   },
   "dependencies": {
+    "@kobalte/core": "^0.12.1",
     "solid-js": "^1.8.11",
     "solid-styled-components": "^0.28.5",
     "solidjs-storex": "^1.0.6"

@@ -31,8 +31,13 @@ const store = defineStore({
         persistent: false,
     },
     actions: (state, set) => ({
-        set(data) {
-            set(data);
+        set(...data: any[]) {
+            // @ts-expect-error
+            set(...data);
+            console.log('set', data);
+        },
+        findById(id: string) {
+            return state.list.find(s => s.id === id);
         },
         newServer() {
             set(produce(s => {
@@ -54,6 +59,14 @@ const store = defineStore({
                         passphrase: '',
                     },
                 })
+            }))
+        },
+        updateServer(index: number, data: Partial<Server>) {
+            set(produce(s => {
+                if (data.tunnel !== undefined) {
+                    data.tunnel = Object.assign(s.list[index].tunnel, data.tunnel);
+                }
+                Object.assign(s.list[index], data);
             }))
         },
     }),

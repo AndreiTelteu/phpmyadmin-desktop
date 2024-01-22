@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/adrg/xdg"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -47,10 +51,21 @@ func (a *App) shutdown(ctx context.Context) {
 
 func (a *App) NewWindow(serverId string) error {
 	path, _ := os.Executable()
-
 	var cmd string
 	var args []string
 	cmd = path
 	args = []string{"-serverId", serverId}
 	return exec.Command(cmd, args...).Start()
+}
+
+func (a *App) ChoosePrivateKey() (string, error) {
+	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		DefaultDirectory: xdg.Home + string(os.PathSeparator) + ".ssh",
+		Title:            "Choose private key",
+	})
+	if err != nil {
+		fmt.Println("OpenFileDialog", err)
+		return "", err
+	}
+	return file, err
 }
