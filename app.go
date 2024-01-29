@@ -69,3 +69,10 @@ func (a *App) ChoosePrivateKey() (string, error) {
 	}
 	return file, err
 }
+
+func (a *App) CheckCurrentVersion(appIp string) (string, error) {
+	if appIp == "app" {
+		return "", nil
+	}
+	return "", nil
+}

@@ -41,3 +41,25 @@ button,input,optgroup,select,textarea {
 button,select {
   text-transform: none;
 }
+
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background-color: transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+  width: 0;
+  height: 0;
+}

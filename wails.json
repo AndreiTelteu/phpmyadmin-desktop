@@ -1,5 +1,8 @@
 {
   "name": "phpmyadmin-desktop",
+  "info": {
+    "productVersion": "0.0.3"
+  },
   "outputfilename": "phpmyadmin-desktop",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",

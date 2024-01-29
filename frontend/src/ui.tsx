@@ -1,7 +1,7 @@
 export { css, createGlobalStyles } from 'solid-styled-components'
 import { css, type StylesArg } from 'solid-styled-components'
 import { Tabs as TabsComp } from '@kobalte/core'
-import { For, JSX } from 'solid-js';
+import { For, JSX, type Component } from 'solid-js';
 
 type InputType = {
     [key: string]: any;
@@ -25,12 +25,13 @@ export function stylesheet<T = InputType>(stylesheet: Stylesheet<T>): Stylesheet
 export function Tabs(props: {
     tabs: {
         label: string,
-        content: JSX.Element,
+        content: JSX.Element | Component,
     }[]
 }) {
     const s = stylesheet({
         tabs: {
             width: '100%',
+            height: 'calc(100vh - 38px)',
             '&[data-orientation="vertical"]': {
                 display: 'flex',
             },
@@ -87,6 +88,8 @@ export function Tabs(props: {
             },
         },
         content: {
+            height: '100%',
+            overflow: 'auto',
             padding: '16px',
         },
     })
@@ -102,7 +105,7 @@ export function Tabs(props: {
             </TabsComp.List>
             <For each={props.tabs} children={(tab) => (
                 <TabsComp.Content class={s.content} value={tab.label}>
-                    {tab.content}
+                    {tab.content instanceof Function ? <tab.content /> : tab.content}
                 </TabsComp.Content>
             )} />
         </TabsComp.Root>
