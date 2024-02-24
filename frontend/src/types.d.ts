@@ -8,6 +8,7 @@ declare global {
             version?: string,
             latest?: string,
             latest_link?: string,
+            img: string,
         }
         
     }

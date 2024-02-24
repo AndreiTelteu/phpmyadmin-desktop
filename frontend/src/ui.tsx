@@ -1,6 +1,6 @@
 export { css, createGlobalStyles } from 'solid-styled-components'
 import { css, type StylesArg } from 'solid-styled-components'
-import { Tabs as TabsComp } from '@kobalte/core'
+import { Tabs as TabsComp, Button as ButtonComp, Progress as ProgressComp } from '@kobalte/core'
 import { For, JSX, type Component } from 'solid-js';
 
 type InputType = {
@@ -109,5 +109,91 @@ export function Tabs(props: {
                 </TabsComp.Content>
             )} />
         </TabsComp.Root>
+    )
+}
+
+export function Button(props) {
+    const s = stylesheet({
+        btn: {
+            appearance: 'none',
+            display: 'inline-flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '40px',
+            width: 'auto',
+            outline: 'none',
+            borderRadius: '6px',
+            padding: '0 16px',
+            backgroundColor: 'hsl(200 98% 39%)',
+            color: 'white',
+            fontSize: '16px',
+            lineHeight: '0',
+            transition: '250ms background-color',
+            '&:hover': {
+                backgroundColor: 'hsl(201 96% 32%)',
+            },
+            '&:focus-visible': {
+                outline: '2px solid hsl(200 98% 39%)',
+                outlineOffset: '2px',
+            },
+            '&:active': {
+                backgroundColor: 'hsl(201 90% 27%)',
+            },
+            '&:disabled': {
+                backgroundColor: '#535353',
+            },
+        },
+    })
+    return <ButtonComp.Root {...props} class={s.btn}>
+        {props.children}
+    </ButtonComp.Root>
+}
+
+export function Progress(props: {
+    value: number,
+    maxValue: number,
+    message: string,
+}) {
+    const s = stylesheet({
+        progress: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+            width: '300px',
+        },
+        progress_label_container: {
+            display: 'flex',
+            justifyContent: 'space-between',
+        },
+        progress_label_text: {
+            color: '#fff',
+            fontSize: '14px',
+        },
+        progress_track: {
+            height: '10px',
+            backgroundColor: 'hsl(240 6% 90%)',
+        },
+        progress_fill: {
+            backgroundColor: 'hsl(200 98% 39%)',
+            height: '100%',
+            width: 'var(--kb-progress-fill-width)',
+            transition: 'width 250ms linear',
+            '&[data-progress="complete"]': {
+                backgroundColor: '#16a34a',
+            },
+        },
+    });
+    return (
+        <ProgressComp.Root minValue={0} {...props} class={s.progress}>
+            <div class={s.progress_label_container}>
+                <ProgressComp.Label class={s.progress_label_text}>
+                    {props.message}
+                </ProgressComp.Label>
+                <ProgressComp.ValueLabel class={s.progress_label_text} />
+            </div>
+            <ProgressComp.Track class={s.progress_track}>
+                <ProgressComp.Fill class={s.progress_fill} />
+            </ProgressComp.Track>
+        </ProgressComp.Root>
     )
 }

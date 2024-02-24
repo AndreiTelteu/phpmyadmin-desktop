@@ -36,8 +36,8 @@ func main() {
 
 	opts := &options.App{
 		Title:  "phpMyAdmin Desktop",
-		Width:  500,
-		Height: 500,
+		Width:  540,
+		Height: 600,
 		// MinWidth:          1024,
 		// MinHeight:         768,
 		// MaxWidth:          1280,
