@@ -2,6 +2,7 @@
 import { render } from 'solid-js/web';
 
 import './index.css';
+import './theme';
 import App from './App';
 import { GetServerID } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
 import PMA from './PMA';
