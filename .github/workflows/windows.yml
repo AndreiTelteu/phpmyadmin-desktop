@@ -45,11 +45,11 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Build Windows desktop executable
+      - name: Build Windows desktop executable (production GUI subsystem)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path bin | Out-Null
-          go build -trimpath -o bin/phpmyadmin-desktop.exe .
+          go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/phpmyadmin-desktop.exe .
 
       - name: Run Go tests
         run: go test ./...

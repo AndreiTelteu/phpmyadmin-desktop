@@ -24,6 +24,13 @@ tasks:
       - mkdir -p {{.BIN_DIR}}
       - go build -o {{.BIN_DIR}}/{{.APP_NAME}}
 
+  build-windows:
+    desc: Build the production Windows GUI executable without a console window
+    deps: [frontend, bindings]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOOS=windows GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o {{.BIN_DIR}}/{{.APP_NAME}}.exe
+
   test:
     desc: Run Go checks after regenerating frontend assets and bindings
     deps: [frontend, bindings]
