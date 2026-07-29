@@ -80,7 +80,9 @@ jobs:
       - name: Verify bundled PHP extension DLLs required by phpMyAdmin
         shell: pwsh
         run: |
-          $required = @('php_curl.dll', 'php_mbstring.dll', 'php_mysqli.dll', 'php_openssl.dll', 'php_pdo_mysql.dll', 'php_xml.dll', 'php_zip.dll')
+          # DOM/XML support is compiled into the official Windows PHP runtime;
+          # it is not distributed as an ext/php_xml.dll module.
+          $required = @('php_curl.dll', 'php_mbstring.dll', 'php_mysqli.dll', 'php_openssl.dll', 'php_pdo_mysql.dll', 'php_zip.dll')
           $missing = $required | Where-Object { -not (Test-Path (Join-Path 'runtime\\ext' $_)) }
           if ($missing) { throw "Missing PHP extension DLLs: $($missing -join ', ')" }
 
