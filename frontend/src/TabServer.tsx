@@ -1,6 +1,6 @@
 import { For } from 'solid-js';
 import useServersStore from './serversStore';
-import { NewWindow, ChoosePrivateKey } from '../wailsjs/go/main/App';
+import { NewWindow, ChoosePrivateKey } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
 
 export default function TabServer() {
     const [serversStore, serversActions] = useServersStore();

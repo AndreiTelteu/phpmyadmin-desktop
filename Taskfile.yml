@@ -1,0 +1,31 @@
+version: '3'
+
+vars:
+  APP_NAME: phpmyadmin-desktop
+  BIN_DIR: bin
+
+tasks:
+  frontend:
+    desc: Build the Solid frontend for embedding
+    dir: frontend
+    cmds:
+      - npm install
+      - npm run build
+
+  bindings:
+    desc: Regenerate Wails v3 TypeScript bindings
+    cmds:
+      - wails3 generate bindings -clean -b -names -ts -d frontend/bindings
+
+  build:
+    desc: Build the desktop app for the current platform
+    deps: [frontend, bindings]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/{{.APP_NAME}}
+
+  test:
+    desc: Run Go checks after regenerating frontend assets and bindings
+    deps: [frontend, bindings]
+    cmds:
+      - go test ./...

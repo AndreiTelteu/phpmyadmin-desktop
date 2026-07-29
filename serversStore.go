@@ -7,6 +7,8 @@ import (
 	wailsconfigstore "github.com/AndreiTelteu/wails-configstore"
 )
 
+// TunnelConfig describes an optional local SSH port-forward for a database
+// server. It is persisted alongside the connection definition.
 type TunnelConfig struct {
 	Enabled    bool   `json:"enabled"`
 	Host       string `json:"host"`
@@ -17,8 +19,9 @@ type TunnelConfig struct {
 	PrivateKey string `json:"privateKey"`
 	Passphrase string `json:"passphrase"`
 }
+
 type ServerConfig struct {
-	Id       string       `json:"id"`
+	ID       string       `json:"id"`
 	Name     string       `json:"name"`
 	Host     string       `json:"host"`
 	Port     int          `json:"port"`
@@ -26,30 +29,29 @@ type ServerConfig struct {
 	Password string       `json:"password"`
 	Tunnel   TunnelConfig `json:"tunnel"`
 }
+
 type ServersConfig struct {
 	List []ServerConfig `json:"list"`
 }
 
-func (s *ServersConfig) FindById(id string) *ServerConfig {
-	for _, server := range s.List {
-		if server.Id == id {
-			return &server
+func (s *ServersConfig) FindByID(id string) *ServerConfig {
+	for index := range s.List {
+		if s.List[index].ID == id {
+			return &s.List[index]
 		}
 	}
 	return nil
 }
 
-func GetServersConfig(conf *wailsconfigstore.ConfigStore) *ServersConfig {
+func GetServersConfig(conf *wailsconfigstore.ConfigStore) (*ServersConfig, error) {
 	data, err := conf.Get("servers.json", `{"list":[]}`)
 	if err != nil {
-		fmt.Println("could not read the servers config file:", err)
-		return nil
+		return nil, fmt.Errorf("read servers configuration: %w", err)
 	}
+
 	var serversConfig ServersConfig
-	err = json.Unmarshal([]byte(data), &serversConfig)
-	if err != nil {
-		fmt.Println("could not parse servers config data:", err)
-		return nil
+	if err := json.Unmarshal([]byte(data), &serversConfig); err != nil {
+		return nil, fmt.Errorf("parse servers configuration: %w", err)
 	}
-	return &serversConfig
+	return &serversConfig, nil
 }

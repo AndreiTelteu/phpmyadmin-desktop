@@ -1,5 +1,5 @@
 import { defineStore } from "solidjs-storex";
-import * as ConfigStore from '../wailsjs/go/wailsconfigstore/ConfigStore';
+import { GetServersJSON, SaveServersJSON } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
 import { produce } from "solid-js/store";
 import { createEffect } from "solid-js";
 
@@ -45,7 +45,7 @@ const store = defineStore({
                     id: '',
                     name: '',
                     host: '',
-                    port: 22,
+                    port: 3306,
                     username: '',
                     password: '',
                     tunnel: {
@@ -73,7 +73,7 @@ const store = defineStore({
 });
 export default store;
 
-ConfigStore.Get('servers.json', 'null').then(res => {
+GetServersJSON().then(res => {
     try {
         let data = JSON.parse(res);
         store()[1].set(data);
@@ -84,6 +84,6 @@ ConfigStore.Get('servers.json', 'null').then(res => {
 .finally(() => {
     createEffect(() => {
         const data = store()[0];
-        ConfigStore.Set('servers.json', JSON.stringify(data, null, 2));
+        SaveServersJSON(JSON.stringify(data, null, 2)).catch(console.error);
     });
 });

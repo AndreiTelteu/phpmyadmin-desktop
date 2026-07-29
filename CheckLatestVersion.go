@@ -2,187 +2,163 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"regexp"
-	"sort"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/gocolly/colly"
 	"github.com/reugn/async"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-func (a *App) CheckLatestVersion(appIp string) ([]string, error) {
-	res := GetLatestVersionInfo(a.ctx, appIp)
+const (
+	frankenPHPRepository = "https://api.github.com/repos/php/frankenphp/releases/latest"
+	frankenPHPAssetName  = "frankenphp-windows-x86_64.zip"
+	phpMyAdminTagsURL    = "https://api.github.com/repos/phpmyadmin/phpmyadmin/tags?per_page=100"
+	phpMyAdminArchiveURL = "https://github.com/phpmyadmin/phpmyadmin/archive/refs/tags/%s.tar.gz"
+	githubAPIUserAgent   = "phpMyAdmin-Desktop"
+)
+
+// release is the minimal public GitHub release response needed by the component
+// updater. Public GitHub Releases endpoints do not require an API key; they are
+// rate limited by GitHub per client IP.
+type release struct {
+	TagName string         `json:"tag_name"`
+	Assets  []releaseAsset `json:"assets"`
+}
+
+type releaseAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+type repositoryTag struct {
+	Name string `json:"name"`
+}
+
+func (a *App) CheckLatestVersion(componentID string) ([]string, error) {
+	res := GetLatestVersionInfo(context.Background(), componentID)
 	result, err := res.Join()
 	if err != nil {
-		fmt.Println("CheckLatestVersion ERR", err)
-		return make([]string, 0), err
+		return nil, err
 	}
 	return *result, nil
 }
 
-func GetLatestVersionInfo(ctx context.Context, appId string) async.Future[[]string] {
+func GetLatestVersionInfo(ctx context.Context, componentID string) async.Future[[]string] {
 	promise := async.NewPromise[[]string]()
-	go func(appId string) {
-		c := colly.NewCollector()
-		c.WithTransport(&http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify:    true,
-				VerifyConnection:      nil,
-				VerifyPeerCertificate: nil,
-			},
-		})
-		platform := runtime.Environment(ctx).Platform
-		arch := runtime.Environment(ctx).Arch
-		c.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-		c.OnError(func(_ *colly.Response, err error) {
-			fmt.Println("Something went wrong:", err)
-			promise.Failure(errors.New("error-request"))
-		})
-		if appId == "app" {
-			versions := map[string]interface{}{}
-			regex := regexp.MustCompile(`(?i)releases\/tag.*(\d+\.\d+\.\d+)`)
-			regex2 := regexp.MustCompile(`(?i)releases\/download(.*)-` + platform + `-` + arch + `.*`)
-			c.OnHTML("section", func(e *colly.HTMLElement) {
-				var ver string
-				var link string
-				e.DOM.Find("a").Each(func(i int, s *goquery.Selection) {
-					href, _ := s.Attr("href")
-					regexResult := regex.FindStringSubmatch(href)
-					if len(regexResult) > 1 {
-						ver = regexResult[1]
-					}
-					regexResult2 := regex2.FindStringSubmatch(href)
-					if len(regexResult2) > 1 {
-						link = href
-					}
-				})
-				if ver != "" && link != "" {
-					versions[ver] = link
-				}
-			})
-			c.OnScraped(func(r *colly.Response) {
-				ver, item := getLatestVer(versions)
-				if ver == "" || item.(string) == "" {
-					promise.Failure(errors.New("not-found-release"))
-					return
-				}
-				promise.Success(&[]string{ver, "https://github.com" + item.(string)})
-			})
-			c.Visit("https://github.com/achhabra2/riftshare/releases")
+	go func() {
+		var version string
+		var downloadURL string
+		var err error
+
+		switch componentID {
+		case "frankenphp":
+			version, downloadURL, err = latestFrankenPHPRelease(ctx)
+		case "pma":
+			version, downloadURL, err = latestPHPMyAdminRelease()
+		default:
+			err = fmt.Errorf("unsupported component: %s", componentID)
 		}
-		if appId == "pma" {
-			c.OnHTML(".table tr.featured-dl td:first-of-type a", func(e *colly.HTMLElement) {
-				regex := regexp.MustCompile(`(?i)phpMyAdmin-(\d+\.\d+\.\d+)`)
-				regexResult := regex.FindStringSubmatch(e.Text)
-				if len(regexResult) > 1 {
-					promise.Success(&[]string{regexResult[1], e.Attr("href")})
-				}
-			})
-			c.OnScraped(func(r *colly.Response) {
-				promise.Failure(errors.New("not-found-release"))
-			})
-			c.Visit("https://www.phpmyadmin.net/downloads/")
+
+		if err != nil {
+			promise.Failure(err)
+			return
 		}
-		if appId == "php" {
-			if platform == "windows" {
-				versions := map[string]interface{}{}
-				regex := regexp.MustCompile(`(?i)php\s+[0-9\.\,]+\s+\((\d+\.\d+\.\d+)\)`)
-				c.OnHTML("#main-column .entry", func(e *colly.HTMLElement) {
-					var ver string
-					e.DOM.Find(".entry-title").Each(func(i int, s *goquery.Selection) {
-						regexResult := regex.FindStringSubmatch(s.Text())
-						if len(regexResult) > 1 {
-							ver = strings.Trim(regexResult[1], " ")
-						}
-					})
-					e.DOM.Find("a").Each(func(i int, s *goquery.Selection) {
-						if s.Text() == "Zip" {
-							link, _ := s.Attr("href")
-							if arch == "386" && strings.Contains(link, "x86") && !strings.Contains(link, "-nts-") {
-								versions[ver] = link
-							}
-							if arch == "amd64" && strings.Contains(link, "x64") && !strings.Contains(link, "-nts-") {
-								versions[ver] = link
-							}
-						}
-					})
-				})
-				c.OnScraped(func(r *colly.Response) {
-					ver, item := getLatestVer(versions)
-					if item.(string) == "" {
-						promise.Failure(errors.New("not-found-release"))
-						return
-					}
-					promise.Success(&[]string{ver, "https://www.phpmyadmin.net" + item.(string)})
-				})
-				c.Visit("https://windows.php.net/download/")
-			} else if platform == "linux" || platform == "darwin" {
-				versions := map[string]interface{}{}
-				reg := `(?i)php-(\d+\.\d+\.\d+)-cli`
-				if platform == "linux" && (arch == "386" || arch == "amd64") {
-					reg += `-linux-x86_64`
-				}
-				if platform == "linux" && arch == "arm" {
-					reg += `-linux-aarch64`
-				}
-				if platform == "darwin" && (arch == "386" || arch == "amd64") {
-					reg += `-macos-x86_64`
-				}
-				if platform == "darwin" && arch == "arm" {
-					reg += `-macos-aarch64`
-				}
-				regex := regexp.MustCompile(reg)
-				c.OnHTML("a", func(e *colly.HTMLElement) {
-					regexResult := regex.FindStringSubmatch(e.Text)
-					if len(regexResult) > 1 {
-						ver := strings.Trim(regexResult[1], " ")
-						versions[ver] = e.Attr("href")
-					}
-				})
-				c.OnScraped(func(r *colly.Response) {
-					ver, item := getLatestVer(versions)
-					if ver == "" || item.(string) == "" {
-						promise.Failure(errors.New("not-found-release"))
-						return
-					}
-					promise.Success(&[]string{ver, "https://dl.static-php.dev/static-php-cli/common/" + item.(string)})
-				})
-				c.Visit("https://dl.static-php.dev/static-php-cli/common/")
-			} else {
-				promise.Failure(errors.New("not-supported-platform"))
-			}
-		}
-	}(appId)
+		promise.Success(&[]string{version, downloadURL})
+	}()
 	return promise.Future()
 }
 
-func getLatestVer(list map[string]interface{}) (string, interface{}) {
-	var versions semver.Collection
-	if len(list) == 0 {
-		return "", nil
+func latestFrankenPHPRelease(ctx context.Context) (string, string, error) {
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return "", "", errors.New("FrankenPHP Runtime is currently supported only on Windows x86_64")
 	}
-	for v := range list {
-		ver, err := semver.NewVersion(v)
-		if err != nil {
-			fmt.Printf("Error parsing version: %s", err)
-		} else {
-			versions = append(versions, ver)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, frankenPHPRepository, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("create FrankenPHP release request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", githubAPIUserAgent)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("request FrankenPHP release: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+		return "", "", fmt.Errorf("request FrankenPHP release: %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+
+	var latest release
+	if err := json.NewDecoder(response.Body).Decode(&latest); err != nil {
+		return "", "", fmt.Errorf("decode FrankenPHP release: %w", err)
+	}
+
+	version := strings.TrimPrefix(latest.TagName, "v")
+	if _, err := semver.NewVersion(version); err != nil {
+		return "", "", fmt.Errorf("invalid FrankenPHP release version %q: %w", latest.TagName, err)
+	}
+
+	for _, asset := range latest.Assets {
+		if asset.Name == frankenPHPAssetName && asset.BrowserDownloadURL != "" {
+			return version, asset.BrowserDownloadURL, nil
 		}
 	}
-	sort.Sort(semver.Collection(versions))
-	latest := versions[len(versions)-1]
-	for v, item := range list {
-		if v == latest.String() {
-			return v, item
-		}
+	return "", "", errors.New("FrankenPHP Windows x86_64 archive not found in the latest release")
+}
+
+func latestPHPMyAdminRelease() (string, string, error) {
+	req, err := http.NewRequest(http.MethodGet, phpMyAdminTagsURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("create phpMyAdmin tags request: %w", err)
 	}
-	return "", nil
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", githubAPIUserAgent)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("request phpMyAdmin tags: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+		return "", "", fmt.Errorf("request phpMyAdmin tags: %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+
+	var tags []repositoryTag
+	if err := json.NewDecoder(response.Body).Decode(&tags); err != nil {
+		return "", "", fmt.Errorf("decode phpMyAdmin tags: %w", err)
+	}
+	for _, tag := range tags {
+		version, ok := phpMyAdminVersionFromTag(tag.Name)
+		if !ok {
+			continue
+		}
+		return version, fmt.Sprintf(phpMyAdminArchiveURL, tag.Name), nil
+	}
+	return "", "", errors.New("stable phpMyAdmin release tag not found")
+}
+
+func phpMyAdminVersionFromTag(tag string) (string, bool) {
+	const prefix = "RELEASE_"
+	if !strings.HasPrefix(tag, prefix) {
+		return "", false
+	}
+
+	version := strings.ReplaceAll(strings.TrimPrefix(tag, prefix), "_", ".")
+	if _, err := semver.NewVersion(version); err != nil {
+		return "", false
+	}
+	return version, true
 }

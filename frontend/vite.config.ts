@@ -7,5 +7,8 @@ export default defineConfig({
   ],
   build: {
     target: 'esnext',
+    rollupOptions: {
+      external: ['/wails/runtime.js'],
+    },
   },
 });

@@ -1,0 +1,121 @@
+name: Windows build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows / Go ${{ matrix.go-version }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.26.x"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Windows desktop executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          go build -trimpath -o bin/phpmyadmin-desktop.exe .
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpmyadmin-desktop-windows-amd64
+          path: bin/phpmyadmin-desktop.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  frankenphp-classic-smoke:
+    name: FrankenPHP classic runtime smoke test
+    runs-on: windows-latest
+
+    steps:
+      - name: Download the official FrankenPHP Windows runtime
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod 'https://api.github.com/repos/php/frankenphp/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -eq 'frankenphp-windows-x86_64.zip' } | Select-Object -First 1
+          if (-not $asset) { throw 'The latest FrankenPHP release has no Windows x86_64 archive.' }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile frankenphp.zip
+          Expand-Archive -Path frankenphp.zip -DestinationPath runtime
+
+      - name: Verify bundled PHP extension DLLs required by phpMyAdmin
+        shell: pwsh
+        run: |
+          $required = @('php_curl.dll', 'php_mbstring.dll', 'php_mysqli.dll', 'php_openssl.dll', 'php_pdo_mysql.dll', 'php_xml.dll', 'php_zip.dll')
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path 'runtime\\ext' $_)) }
+          if ($missing) { throw "Missing PHP extension DLLs: $($missing -join ', ')" }
+
+      - name: Serve a PHP request in FrankenPHP classic mode
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path smoke-site | Out-Null
+          @'
+          <?php
+          header('Content-Type: text/plain');
+          echo "frankenphp-classic-ok\n";
+          '@ | Set-Content -NoNewline smoke-site\index.php
+
+          @'
+          :8080 {
+              root * ./smoke-site
+              php_server
+          }
+          '@ | Set-Content -NoNewline Caddyfile
+
+          $process = Start-Process -FilePath .\runtime\frankenphp.exe -ArgumentList 'run', '--config', 'Caddyfile', '--adapter', 'caddyfile' -PassThru -RedirectStandardOutput frankenphp.stdout.log -RedirectStandardError frankenphp.stderr.log
+          try {
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8080/' -TimeoutSec 2
+                if ($response.Content -match 'frankenphp-classic-ok') { break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            } while ((Get-Date) -lt $deadline)
+
+            if (-not $response -or $response.Content -notmatch 'frankenphp-classic-ok') {
+              Get-Content frankenphp.stdout.log, frankenphp.stderr.log -ErrorAction SilentlyContinue
+              throw 'FrankenPHP did not serve the classic-mode PHP response.'
+            }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
