@@ -432,6 +432,7 @@ func (s *Session) startAttempt(serverID string) (string, error) {
 	s.setPhase(PhaseStarting, "Starting the FrankenPHP runtime…")
 	cmd := buildFrankenPHPCommand(frankenDir, caddyPath, logsDir)
 	if err := s.spawn(cmd); err != nil {
+		closeCommandLogs(cmd)
 		return fail(fmt.Errorf("start FrankenPHP: %w", err))
 	}
 	s.mu.Lock()
@@ -511,6 +512,9 @@ func (s *Session) cleanup() {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 	}
+	if cmd != nil {
+		closeCommandLogs(cmd)
+	}
 	if tunnel != nil {
 		_ = tunnel.Close()
 	}
@@ -520,8 +524,10 @@ func (s *Session) cleanup() {
 }
 
 // buildFrankenPHPCommand constructs the classic-mode child process. Output is
-// redirected to bounded Session log files instead of a console, which Windows
-// GUI-subsystem applications do not have.
+// redirected to bounded session logs instead of a console, which Windows
+// GUI-subsystem applications do not have. The files stay owned by the command
+// and are explicitly closed after Wait/failed Start so Windows can remove the
+// finished session directory.
 func buildFrankenPHPCommand(frankenDir, caddyPath, logsDir string) *exec.Cmd {
 	exe := filepath.Join(frankenDir, frankenphpExe)
 	cmd := exec.Command(exe, "run", "--config", caddyPath, "--adapter", "caddyfile")
@@ -529,6 +535,27 @@ func buildFrankenPHPCommand(frankenDir, caddyPath, logsDir string) *exec.Cmd {
 	cmd.Stdout = openLogTail(filepath.Join(logsDir, "frankenphp.stdout.log"))
 	cmd.Stderr = openLogTail(filepath.Join(logsDir, "frankenphp.stderr.log"))
 	return cmd
+}
+
+// closeCommandLogs releases the per-process log handles. exec.Cmd does not
+// close caller-owned io.Writer values after Wait, and Windows disallows
+// removing a directory while its log files are open.
+func closeCommandLogs(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	closed := make(map[io.Closer]struct{}, 2)
+	for _, writer := range []io.Writer{cmd.Stdout, cmd.Stderr} {
+		closer, ok := writer.(io.Closer)
+		if !ok || closer == nil {
+			continue
+		}
+		if _, seen := closed[closer]; seen {
+			continue
+		}
+		_ = closer.Close()
+		closed[closer] = struct{}{}
+	}
 }
 
 // openLogTail truncates and opens a Session log file. Errors fall back to
