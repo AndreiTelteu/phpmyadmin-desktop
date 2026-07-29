@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +12,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	wailsconfigstore "github.com/AndreiTelteu/wails-configstore"
+
+	"github.com/andreitelteu/phpmyadmin-desktop/internal/runtime"
 )
 
 // App is the bound application service. Keep all calls that touch local
@@ -18,6 +22,7 @@ import (
 type App struct {
 	serverID    string
 	configStore *wailsconfigstore.ConfigStore
+	session     *runtime.Session
 }
 
 func NewApp(serverID string) *App {
@@ -26,10 +31,16 @@ func NewApp(serverID string) *App {
 		panic(fmt.Errorf("initialize configuration store: %w", err))
 	}
 
-	return &App{
+	app := &App{
 		serverID:    serverID,
 		configStore: configStore,
 	}
+	if serverID != "" {
+		sess := runtime.NewSession(runtime.NewDefaultManager())
+		sess.SetConfigLoader(runtime.NewServerConfigLoader(configStore))
+		app.session = sess
+	}
+	return app
 }
 
 // GetServerID identifies the selected connection when this process was launched
@@ -74,4 +85,50 @@ func (a *App) ChoosePrivateKey() (string, error) {
 		PromptForSingleSelection()
 }
 
-func (a *App) shutdown() {}
+// SessionStart installs/reuses the runtime, optionally opens the SSH tunnel,
+// starts the FrankenPHP child process and returns the loopback URL the
+// frontend navigates to. Only available in a dedicated -serverId process.
+func (a *App) SessionStart() (string, error) {
+	if a.session == nil {
+		return "", fmt.Errorf("this window is not attached to a dedicated connection session")
+	}
+	return a.session.Start(context.Background(), a.serverID)
+}
+
+// SessionStatus exposes the session phase for progress rendering.
+func (a *App) SessionStatus() (string, error) {
+	if a.session == nil {
+		return `{"phase":"idle"}`, nil
+	}
+	snap := a.session.Snapshot()
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// SessionStop tears down the session runtime and tunnel. It is idempotent.
+func (a *App) SessionStop() {
+	if a.session != nil {
+		a.session.Stop()
+	}
+}
+
+// FindServerName resolves a connection name for window composition.
+func (a *App) FindServerName(serverID string) (string, error) {
+	servers, err := runtime.GetServersConfig(a.configStore)
+	if err != nil {
+		return "", err
+	}
+	if server := servers.FindByID(serverID); server != nil {
+		return server.Name, nil
+	}
+	return "", nil
+}
+
+func (a *App) shutdown() {
+	if a.session != nil {
+		a.session.Stop()
+	}
+}

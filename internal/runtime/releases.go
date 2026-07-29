@@ -1,4 +1,4 @@
-package main
+package runtime
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
-	"github.com/reugn/async"
 )
 
 const (
@@ -24,9 +23,9 @@ const (
 	githubAPIUserAgent    = "phpMyAdmin-Desktop"
 )
 
-// release is the minimal public GitHub release response needed by the component
-// updater. Public GitHub Releases endpoints do not require an API key; they are
-// rate limited by GitHub per client IP.
+// release is the minimal public GitHub release response needed by the
+// component updater. Public GitHub Releases endpoints do not require an API
+// key; they are rate limited by GitHub per client IP.
 type release struct {
 	TagName string         `json:"tag_name"`
 	Assets  []releaseAsset `json:"assets"`
@@ -41,18 +40,20 @@ type repositoryTag struct {
 	Name string `json:"name"`
 }
 
-// componentDownload describes a resolved upstream artifact. ChecksumSHA256 is
+// ComponentDownload describes a resolved upstream artifact. ChecksumSHA256 is
 // empty when the upstream project does not publish a checksum for the
 // artifact; installers must record that limitation explicitly instead of
 // inventing one.
-type componentDownload struct {
+type ComponentDownload struct {
 	Version        string
 	URL            string
 	ChecksumURL    string
 	ChecksumSHA256 string
 }
 
-var errNoOfficialChecksum = errors.New("upstream release does not publish an official checksum for this artifact")
+// ErrNoOfficialChecksum marks artifacts whose upstream project does not
+// publish a checksum; the runtime records this limitation explicitly.
+var ErrNoOfficialChecksum = errors.New("upstream release does not publish an official checksum for this artifact")
 
 // fetchLatestRelease downloads the public metadata of the latest GitHub
 // release of a repository. The endpoint is unauthenticated and rate limited
@@ -84,10 +85,10 @@ func fetchLatestRelease(ctx context.Context, apiURL string) (*release, error) {
 	return &latest, nil
 }
 
-// latestFrankenPHPDownload resolves the latest official FrankenPHP Windows
+// LatestFrankenPHPDownload resolves the latest official FrankenPHP Windows
 // x86_64 archive together with the upstream hashes.json checksum when the
 // release publishes one.
-func latestFrankenPHPDownload(ctx context.Context) (*componentDownload, error) {
+func LatestFrankenPHPDownload(ctx context.Context) (*ComponentDownload, error) {
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return nil, errors.New("FrankenPHP Runtime is currently supported only on Windows x86_64")
 	}
@@ -102,7 +103,7 @@ func latestFrankenPHPDownload(ctx context.Context) (*componentDownload, error) {
 		return nil, fmt.Errorf("invalid FrankenPHP release version %q: %w", latest.TagName, err)
 	}
 
-	info := &componentDownload{Version: version}
+	info := &ComponentDownload{Version: version}
 	for _, asset := range latest.Assets {
 		switch asset.Name {
 		case frankenPHPAssetName:
@@ -119,15 +120,14 @@ func latestFrankenPHPDownload(ctx context.Context) (*componentDownload, error) {
 		return nil, errors.New("FrankenPHP Windows x86_64 archive not found in the latest release")
 	}
 	if info.ChecksumURL != "" {
-		hash, err := fetchFrankenPHPChecksum(ctx, info.ChecksumURL, frankenPHPAssetName)
-		if err == nil {
+		if hash, err := fetchFrankenPHPChecksum(ctx, info.ChecksumURL, frankenPHPAssetName); err == nil {
 			info.ChecksumSHA256 = hash
 		}
 		// A missing/unparseable hashes.json must not downgrade security to a
-		// guessed value; the caller falls back to errNoOfficialChecksum.
+		// guessed value; the caller falls back to ErrNoOfficialChecksum.
 	}
 	if info.ChecksumSHA256 == "" {
-		return info, errNoOfficialChecksum
+		return info, ErrNoOfficialChecksum
 	}
 	return info, nil
 }
@@ -173,77 +173,19 @@ func fetchFrankenPHPChecksum(ctx context.Context, hashesURL, assetName string) (
 	return sum, nil
 }
 
-// latestPHPMyAdminDownload resolves the latest stable phpMyAdmin release tag
+// LatestPHPMyAdminDownload resolves the latest stable phpMyAdmin release tag
 // and its GitHub source tarball. phpMyAdmin does not publish checksums for
 // the GitHub-generated tarballs, so ChecksumSHA256 stays empty.
-func latestPHPMyAdminDownload(ctx context.Context) (*componentDownload, error) {
-	version, tarball, err := latestPHPMyAdminRelease()
+func LatestPHPMyAdminDownload(ctx context.Context) (*ComponentDownload, error) {
+	version, tarball, err := latestPHPMyAdminRelease(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_ = ctx
-	return &componentDownload{Version: version, URL: tarball}, nil
+	return &ComponentDownload{Version: version, URL: tarball}, nil
 }
 
-func (a *App) CheckLatestVersion(componentID string) ([]string, error) {
-	res := GetLatestVersionInfo(context.Background(), componentID)
-	result, err := res.Join()
-	if err != nil {
-		return nil, err
-	}
-	return *result, nil
-}
-
-func GetLatestVersionInfo(ctx context.Context, componentID string) async.Future[[]string] {
-	promise := async.NewPromise[[]string]()
-	go func() {
-		var version string
-		var downloadURL string
-		var err error
-
-		switch componentID {
-		case "frankenphp":
-			version, downloadURL, err = latestFrankenPHPRelease(ctx)
-		case "pma":
-			version, downloadURL, err = latestPHPMyAdminRelease()
-		default:
-			err = fmt.Errorf("unsupported component: %s", componentID)
-		}
-
-		if err != nil {
-			promise.Failure(err)
-			return
-		}
-		promise.Success(&[]string{version, downloadURL})
-	}()
-	return promise.Future()
-}
-
-func latestFrankenPHPRelease(ctx context.Context) (string, string, error) {
-	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
-		return "", "", errors.New("FrankenPHP Runtime is currently supported only on Windows x86_64")
-	}
-
-	latest, err := fetchLatestRelease(ctx, frankenPHPRepository)
-	if err != nil {
-		return "", "", fmt.Errorf("FrankenPHP release: %w", err)
-	}
-
-	version := strings.TrimPrefix(latest.TagName, "v")
-	if _, err := semver.NewVersion(version); err != nil {
-		return "", "", fmt.Errorf("invalid FrankenPHP release version %q: %w", latest.TagName, err)
-	}
-
-	for _, asset := range latest.Assets {
-		if asset.Name == frankenPHPAssetName && asset.BrowserDownloadURL != "" {
-			return version, asset.BrowserDownloadURL, nil
-		}
-	}
-	return "", "", errors.New("FrankenPHP Windows x86_64 archive not found in the latest release")
-}
-
-func latestPHPMyAdminRelease() (string, string, error) {
-	req, err := http.NewRequest(http.MethodGet, phpMyAdminTagsURL, nil)
+func latestPHPMyAdminRelease(ctx context.Context) (string, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, phpMyAdminTagsURL, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("create phpMyAdmin tags request: %w", err)
 	}
@@ -274,6 +216,12 @@ func latestPHPMyAdminRelease() (string, string, error) {
 		return version, fmt.Sprintf(phpMyAdminArchiveURL, tag.Name), nil
 	}
 	return "", "", errors.New("stable phpMyAdmin release tag not found")
+}
+
+// PHPMyAdminVersionFromTag converts a phpMyAdmin git tag such as
+// RELEASE_5_2_2 into a semver string; non-stable tags are rejected.
+func PHPMyAdminVersionFromTag(tag string) (string, bool) {
+	return phpMyAdminVersionFromTag(tag)
 }
 
 func phpMyAdminVersionFromTag(tag string) (string, bool) {

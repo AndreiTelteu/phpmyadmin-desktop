@@ -26,6 +26,13 @@ export function ChoosePrivateKey(): $CancellablePromise<string> {
 }
 
 /**
+ * FindServerName resolves a connection name for window composition.
+ */
+export function FindServerName(serverID: string): $CancellablePromise<string> {
+    return $Call.ByName("main.App.FindServerName", serverID);
+}
+
+/**
  * GetServerID identifies the selected connection when this process was launched
  * specifically for that connection.
  */
@@ -55,6 +62,29 @@ export function NewWindow(serverID: string): $CancellablePromise<void> {
  */
 export function SaveServersJSON(value: string): $CancellablePromise<void> {
     return $Call.ByName("main.App.SaveServersJSON", value);
+}
+
+/**
+ * SessionStart installs/reuses the runtime, optionally opens the SSH tunnel,
+ * starts the FrankenPHP child process and returns the loopback URL the
+ * frontend navigates to. Only available in a dedicated -serverId process.
+ */
+export function SessionStart(): $CancellablePromise<string> {
+    return $Call.ByName("main.App.SessionStart");
+}
+
+/**
+ * SessionStatus exposes the session phase for progress rendering.
+ */
+export function SessionStatus(): $CancellablePromise<string> {
+    return $Call.ByName("main.App.SessionStatus");
+}
+
+/**
+ * SessionStop tears down the session runtime and tunnel. It is idempotent.
+ */
+export function SessionStop(): $CancellablePromise<void> {
+    return $Call.ByName("main.App.SessionStop");
 }
 
 // Private type creation functions

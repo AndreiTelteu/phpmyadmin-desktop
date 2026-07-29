@@ -9,7 +9,7 @@ The intended workflow is deliberately simple:
 3. For a private database, describe an SSH bastion rather than opening MySQL to the internet.
 4. Launch a dedicated local phpMyAdmin session for that environment.
 
-This is an early prototype. The connection catalogue, local persistence model, SSH-key picker, Wails shell, and component-version checks exist. Reliable PHP/phpMyAdmin installation, local HTTP serving, SSH-tunnel lifecycle management, secure credential storage, and opening a working phpMyAdmin session are still under construction.
+The launcher, per-connection process routing, runtime installation/cache, local FrankenPHP serving, strict SSH tunnel lifecycle, and dedicated phpMyAdmin session flow are implemented on Windows. The runtime is still **pre-release**: Windows GUI/runtime end-to-end validation remains required, and connection credentials are currently persisted locally in `servers.json` rather than an OS credential store. Do not use production secrets until secure storage is added and the Windows acceptance checks have passed.
 
 ## Why this exists
 
@@ -51,19 +51,20 @@ The tunnel must bind to loopback only, use a free local port, propagate errors c
 | Solid/Wails desktop shell | Migrated to Wails v3 alpha2.119 |
 | Saved connection catalogue | Implemented locally as `servers.json` via XDG config storage |
 | SSH profile fields and private-key picker | Prototype implemented |
-| Dedicated app process for a selected profile | Implemented, but not yet a completed phpMyAdmin session |
-| Version lookup for app/PHP/phpMyAdmin | Prototype scraper; needs hardening |
-| PHP/phpMyAdmin installation and lifecycle | Not implemented |
-| Start/stop SSH tunnel with readiness and cleanup | Not implemented |
-| Secure credential storage | Not implemented—do not use this prototype with production secrets |
-| Browser/webview phpMyAdmin session | Not implemented |
+| Dedicated app process for a selected profile | Implemented: the selected `serverId` opens a full-size dedicated phpMyAdmin session |
+| Version lookup for app/FrankenPHP/phpMyAdmin | Public GitHub API, with FrankenPHP checksum metadata when upstream publishes it |
+| FrankenPHP/phpMyAdmin installation and lifecycle | Implemented for Windows x86_64; concurrent cached downloads with real byte-level progress (FrankenPHP, phpMyAdmin, Darkwolf theme), loopback readiness probe, cleanup and per-version install lock |
+| Darkwolf theme | Installed from the official `phpmyadmin/themes` master archive (checksum-unverified snapshot, recorded in the install marker); `ThemeDefault = 'darkwolf'` is written only once the theme is present in the session tree |
+| Start/stop SSH tunnel with readiness and cleanup | Implemented with loopback binding and strict `known_hosts` verification |
+| Secure credential storage | Not implemented—do not use this pre-release runtime with production secrets |
+| Browser/webview phpMyAdmin session | Implemented by navigating the dedicated Wails WebView to its loopback session URL; Windows end-to-end validation remains outstanding |
 
 ## Technology
 
 - Go 1.25+ and [Wails v3 alpha](https://v3.wails.io/)
 - SolidJS, TypeScript, Vite
 - Kobalte + `solid-styled-components`
-- `github.com/rgzr/sshtun` for the planned SSH forwarding layer
+- `golang.org/x/crypto/ssh` plus `github.com/skeema/knownhosts` for strict SSH forwarding
 - `github.com/AndreiTelteu/wails-configstore` for the current local configuration store
 
 Wails v3 is still pre-release software. The project intentionally pins the tested alpha version in `go.mod`.
@@ -143,11 +144,10 @@ This repository is not ready for production database credentials. The current pe
 The next meaningful implementation milestones are:
 
 1. Build a validated connection editor with stable IDs and safe defaults.
-2. Add a runtime manager for PHP and phpMyAdmin: download/verify, install, start, health-check, stop.
-3. Implement a tunnel manager with loopback binding, a free-port allocator, SSH host-key verification, connection-state UI, retry policy, and deterministic cleanup.
-4. Launch a phpMyAdmin session scoped to the selected connection—ideally with clear environment labeling so production mistakes are harder to make.
-5. Move secrets out of `servers.json` into native secure storage.
-6. Add integration tests using a disposable MySQL/MariaDB server and SSH endpoint.
+2. Move secrets out of `servers.json` into native secure storage.
+3. Run Windows acceptance tests against a disposable MySQL/MariaDB server and SSH bastion, including the real downloaded FrankenPHP/phpMyAdmin runtime.
+4. Add clear environment labeling and safeguards so production mistakes are harder to make.
+5. Add an update policy/UI for cached component versions, including visibility of artifacts that have no upstream checksum.
 
 ## Contributing
 

@@ -9,7 +9,9 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/adrg/xdg v0.5.3
 	github.com/reugn/async v0.7.0
+	github.com/skeema/knownhosts v1.3.2
 	github.com/wailsapp/wails/v3 v3.0.0-alpha2.119
+	golang.org/x/crypto v0.50.0
 )
 
 require (

@@ -6,7 +6,7 @@
 
 The important security/product boundary is: database access stays local to the machine running the app. A remote MySQL/MariaDB endpoint should normally be reached through an SSH tunnel instead of being exposed publicly. The app holds connection metadata locally; it must never add telemetry, cloud sync, a remote credential API, or a public database proxy unless the product direction explicitly changes.
 
-The repository is an early prototype. The server list, persistent configuration model, private-key picker, per-server process launch, platform UI, and component update checker exist. The actual phpMyAdmin process/runtime management and reliable tunnel lifecycle are incomplete and must not be described as shipped functionality.
+This is a **pre-release** application. The connection catalogue, local persistence model, SSH-key picker, Wails shell, public component-version checks, FrankenPHP/phpMyAdmin runtime, and strict SSH-tunnel lifecycle are implemented. Secure credential storage and Windows end-to-end acceptance validation remain incomplete; do not describe the runtime as production-ready.
 
 ## Stack and layout
 
@@ -15,14 +15,14 @@ The repository is an early prototype. The server list, persistent configuration 
 - **SolidJS + TypeScript + Vite** frontend in `frontend/`.
 - **Kobalte** and `solid-styled-components` for the current UI primitives.
 - Saved connection definitions are persisted as `servers.json` in the local XDG config directory by `github.com/AndreiTelteu/wails-configstore`.
-- **PHP/phpMyAdmin runtime:** use the official FrankenPHP Windows archive in **classic mode** (`php_server` only; do not enable FrankenPHP worker mode). The native app owns the downloaded runtime, generated `php.ini`/Caddyfile, process, readiness probe, and teardown. Do not compile FrankenPHP during an end-user install. RoadRunner is not the chosen runtime: it requires a PHP worker/protocol lifecycle while adding no compatibility advantage for phpMyAdmin.
+- **PHP/phpMyAdmin runtime:** use the official FrankenPHP Windows archive in **classic mode** (`php_server` only; do not enable FrankenPHP worker mode). The native app owns the downloaded runtime, generated `php.ini`/Caddyfile, process, readiness probe, and teardown. The implementation is in `internal/runtime/`; it uses per-component/version install locks, archive traversal guards, loopback-only listeners, strict SSH `known_hosts` verification, and per-session cleanup. Do not compile FrankenPHP during an end-user install. RoadRunner is not the chosen runtime: it requires a PHP worker/protocol lifecycle while adding no compatibility advantage for phpMyAdmin. The session theme is Darkwolf, installed from the checksum-unverified `phpmyadmin/themes` master snapshot; generated configs keep cookie auth and never embed database/SSH credentials.
 
 | Path | Responsibility |
 | --- | --- |
 | `main.go` | Wails application construction, bound services, embedded frontend, main window. |
 | `app.go` | Bound host APIs: configuration access, private-key picker, and dedicated-process launch. |
-| `serversStore.go` | Persisted server/tunnel model and parsing helpers. |
-| `CheckLatestVersion.go` | Prototype version lookup for the app, PHP runtime, and phpMyAdmin. |
+| `internal/runtime/` | Windows FrankenPHP/phpMyAdmin/Darkwolf-theme installer/cache with concurrent byte-level download progress, generated session config (cookie auth; explicit host/port incl. 3306; `ThemeDefault = 'darkwolf'` only after theme install), strict SSH forwarding, session lifecycle, and runtime tests. |
+| `CheckLatestVersion.go` | Public GitHub release/tag discovery used by the component UI. |
 | `frontend/src/` | Solid UI and local store. |
 | `frontend/bindings/` | Generated Wails v3 TypeScript bindings; do not edit manually. |
 | `frontend/dist/` | Generated production frontend embedded into the Go binary. |
@@ -69,5 +69,4 @@ If invoking direct commands, regenerate bindings after changes to exported `App`
 ## Known technical debt
 
 - The historical `wails.json`, old `frontend/wailsjs/` bindings, and shell scripts were Wails v2 artifacts. Do not revive them; use the Wails v3 application/bindings flow.
-- `CheckLatestVersion.go` is a prototype scraper. Its `InsecureSkipVerify` setting and brittle upstream HTML selectors need replacement before release use.
-- Server form validation, stable IDs, secure credential storage, tunnel lifecycle, phpMyAdmin/PHP runtime installation, and rendering phpMyAdmin in a real session are unfinished.
+- The version discovery paths use unauthenticated public GitHub APIs. Public rate limits apply and phpMyAdmin's generated GitHub source archive has no upstream checksum; the installer records that limitation. Secure credential storage and full Windows end-to-end runtime validation remain outstanding.
