@@ -38,16 +38,33 @@ func main() {
 	})
 	app.OnShutdown(appService.shutdown)
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "phpMyAdmin Desktop",
-		Width:            540,
-		Height:           600,
-		BackgroundColour: application.NewRGBA(255, 255, 255, 255),
-		URL:              "/",
-		Windows: application.WindowsWindow{
-			BackdropType: application.Mica,
-		},
-	})
+	if *serverID == "" {
+		app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:            "phpMyAdmin Desktop",
+			Width:            540,
+			Height:           600,
+			BackgroundColour: application.NewRGBA(255, 255, 255, 255),
+			URL:              "/",
+			Windows: application.WindowsWindow{
+				BackdropType: application.Mica,
+			},
+		})
+	} else {
+		title := "PMA session"
+		if name, err := appService.FindServerName(*serverID); err == nil && name != "" {
+			title = "PMA " + name
+		}
+		app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:            title,
+			Width:            1024,
+			Height:           768,
+			BackgroundColour: application.NewRGBA(255, 255, 255, 255),
+			URL:              "/",
+			Windows: application.WindowsWindow{
+				BackdropType: application.None,
+			},
+		})
+	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

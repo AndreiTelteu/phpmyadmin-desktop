@@ -1,4 +1,4 @@
-package main
+package runtime
 
 import (
 	"encoding/json"
@@ -43,7 +43,13 @@ func (s *ServersConfig) FindByID(id string) *ServerConfig {
 	return nil
 }
 
-func GetServersConfig(conf *wailsconfigstore.ConfigStore) (*ServersConfig, error) {
+// ConfigStore is the minimal config-store contract the runtime package
+// needs; *wailsconfigstore.ConfigStore satisfies it.
+type ConfigStore interface {
+	Get(filename string, defaultValue string) (wailsconfigstore.Config, error)
+}
+
+func GetServersConfig(conf ConfigStore) (*ServersConfig, error) {
 	data, err := conf.Get("servers.json", `{"list":[]}`)
 	if err != nil {
 		return nil, fmt.Errorf("read servers configuration: %w", err)
@@ -54,4 +60,17 @@ func GetServersConfig(conf *wailsconfigstore.ConfigStore) (*ServersConfig, error
 		return nil, fmt.Errorf("parse servers configuration: %w", err)
 	}
 	return &serversConfig, nil
+}
+
+// NewServerConfigLoader returns the Session config lookup bound to a config
+// store. It is the exported way for hosts (main package) to wire the
+// persisted connection catalogue into a Session.
+func NewServerConfigLoader(store ConfigStore) func(serverID string) (*ServerConfig, error) {
+	return func(serverID string) (*ServerConfig, error) {
+		cfg, err := GetServersConfig(store)
+		if err != nil {
+			return nil, err
+		}
+		return cfg.FindByID(serverID), nil
+	}
 }
