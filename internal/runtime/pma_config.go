@@ -6,6 +6,7 @@ import (
 	"html"
 	"math/big"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -56,7 +57,16 @@ http://%s:%d {
 		ini_file_path %s
 	}
 }
-`, host, port, pmaDir, phpIniPath)
+`, host, port, quoteCaddyPath(pmaDir), quoteCaddyPath(phpIniPath))
+}
+
+// quoteCaddyPath emits a single Caddyfile token for an absolute filesystem
+// path. Windows app-data directories commonly contain spaces (for example
+// "phpMyAdmin Desktop"); without quoting, Caddy parses the path as several
+// root directive arguments and refuses to start. JSON-style double quotes
+// are accepted by the Caddyfile adapter and preserve Windows backslashes.
+func quoteCaddyPath(path string) string {
+	return strconv.Quote(path)
 }
 
 func BlowfishSecret() (string, error) {

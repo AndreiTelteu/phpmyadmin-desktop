@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -136,6 +137,9 @@ func TestCaddyfileBindsLoopbackAndClassicMode(t *testing.T) {
 	if !strings.Contains(caddy, "http://127.0.0.1:8123") {
 		t.Fatal("Caddyfile must bind the loopback port")
 	}
+	if !strings.Contains(caddy, "root * \"C:/data/pma\"") || !strings.Contains(caddy, "ini_file_path \"C:/data/sessions/x/php.ini\"") {
+		t.Fatalf("Caddyfile paths must be quoted as one token, got:\n%s", caddy)
+	}
 	if !strings.Contains(caddy, "php_server") {
 		t.Fatal("Caddyfile must use classic mode (php_server)")
 	}
@@ -144,6 +148,19 @@ func TestCaddyfileBindsLoopbackAndClassicMode(t *testing.T) {
 	}
 	if !strings.Contains(caddy, "admin off") {
 		t.Fatal("Caddy admin endpoint must be disabled")
+	}
+}
+
+func TestCaddyfileQuotesWindowsPathsWithSpaces(t *testing.T) {
+	pmaDir := `C:\Users\Andrei\AppData\Local\phpMyAdmin Desktop\runtime\sessions\connection	oken\phpmyadmin`
+	phpIni := `C:\Users\Andrei\AppData\Local\phpMyAdmin Desktop\runtime\sessions\connection	oken\php.ini`
+	caddy := BuildCaddyfile("127.0.0.1", 8123, pmaDir, phpIni)
+
+	if !strings.Contains(caddy, "root * "+strconv.Quote(pmaDir)) {
+		t.Fatalf("Caddyfile root must quote a Windows path containing spaces, got:\n%s", caddy)
+	}
+	if !strings.Contains(caddy, "ini_file_path "+strconv.Quote(phpIni)) {
+		t.Fatalf("Caddyfile ini path must quote a Windows path containing spaces, got:\n%s", caddy)
 	}
 }
 

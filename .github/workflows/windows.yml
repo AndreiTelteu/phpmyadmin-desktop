@@ -87,19 +87,23 @@ jobs:
       - name: Serve a PHP request in FrankenPHP classic mode
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path smoke-site | Out-Null
+          New-Item -ItemType Directory -Force -Path 'smoke site' | Out-Null
           @'
           <?php
           header('Content-Type: text/plain');
           echo "frankenphp-classic-ok\n";
-          '@ | Set-Content -NoNewline smoke-site\index.php
+          '@ | Set-Content -NoNewline 'smoke site\index.php'
 
-          @'
+          # Match the desktop app's generated Caddyfile semantics: absolute
+          # Windows paths have spaces and use escaped backslashes inside a
+          # quoted Caddyfile token.
+          $sitePath = (Resolve-Path 'smoke site').Path.Replace('\', '\\')
+          @"
           :8080 {
-              root * ./smoke-site
+              root * "$sitePath"
               php_server
           }
-          '@ | Set-Content -NoNewline Caddyfile
+          "@ | Set-Content -NoNewline Caddyfile
 
           $process = Start-Process -FilePath .\runtime\frankenphp.exe -ArgumentList 'run', '--config', 'Caddyfile', '--adapter', 'caddyfile' -PassThru -RedirectStandardOutput frankenphp.stdout.log -RedirectStandardError frankenphp.stderr.log
           try {
