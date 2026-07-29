@@ -1,7 +1,7 @@
 import { Accessor, For, Show, createSignal } from 'solid-js';
 import useServersStore from './serversStore';
 import { NewWindow, ChoosePrivateKey } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
-import { ChevronIcon, AddIcon, OpenIcon, KeyIcon, TunnelIcon, DatabaseIcon } from './icons';
+import { ChevronIcon, AddIcon, OpenIcon, KeyIcon, TunnelIcon, DatabaseIcon, CloseIcon } from './icons';
 import { Toggle } from './settings';
 
 export function ConnectionsPanel() {
@@ -96,7 +96,14 @@ export function ConnectionsPanel() {
                                             </span>
                                         </div>
                                         <Show when={expanded()}>
-                                            <ConnectionEditor index={index()} collapse={() => setExpandedIndex(null)} />
+                                            <ConnectionEditor
+                                                index={index()}
+                                                collapse={() => setExpandedIndex(null)}
+                                                remove={() => {
+                                                    serversActions.removeServer(index());
+                                                    setExpandedIndex(null);
+                                                }}
+                                            />
                                         </Show>
                                     </div>
                                 );
@@ -112,7 +119,7 @@ export function ConnectionsPanel() {
     );
 }
 
-function ConnectionEditor(props: { index: number; collapse: () => void }) {
+function ConnectionEditor(props: { index: number; collapse: () => void; remove: () => void }) {
     const [serversStore, serversActions] = useServersStore();
     const server = () => serversStore.list[props.index];
     const [keyError, setKeyError] = createSignal('');
@@ -251,6 +258,14 @@ function ConnectionEditor(props: { index: number; collapse: () => void }) {
 
             <div class="editor-foot">
                 <button type="button" class="btn btn--sm btn--ghost" onClick={props.collapse}>Done</button>
+                <button
+                    type="button"
+                    class="btn btn--sm btn--ghost btn--danger-text"
+                    onClick={props.remove}
+                    aria-label={`Delete ${server()?.name || 'this connection'}`}
+                >
+                    <CloseIcon /> Delete
+                </button>
             </div>
         </div>
     );

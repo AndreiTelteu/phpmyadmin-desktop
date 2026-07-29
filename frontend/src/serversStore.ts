@@ -42,7 +42,10 @@ const store = defineStore({
         newServer() {
             set(produce(s => {
                 s.list.push({
-                    id: '',
+                    // New connections must have a stable ID before their first
+                    // autosave. Existing blank legacy IDs are intentionally not
+                    // backfilled: the user can delete and recreate those rows.
+                    id: crypto.randomUUID(),
                     name: '',
                     host: '',
                     port: 3306,
@@ -59,6 +62,13 @@ const store = defineStore({
                         passphrase: '',
                     },
                 })
+            }))
+        },
+        removeServer(index: number) {
+            set(produce(s => {
+                if (index >= 0 && index < s.list.length) {
+                    s.list.splice(index, 1);
+                }
             }))
         },
         updateServer(index: number, data: Partial<Server>) {
