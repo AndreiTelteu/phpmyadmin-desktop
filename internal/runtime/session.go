@@ -535,6 +535,7 @@ func buildFrankenPHPCommand(frankenDir, caddyPath, phpIniPath, logsDir string) *
 	cmd := exec.Command(exe, "run", "--config", caddyPath, "--adapter", "caddyfile")
 	cmd.Dir = frankenDir
 	cmd.Env = append(os.Environ(), "PHPRC="+filepath.Dir(phpIniPath))
+	hideProcessWindow(cmd)
 	cmd.Stdout = openLogTail(filepath.Join(logsDir, "frankenphp.stdout.log"))
 	cmd.Stderr = openLogTail(filepath.Join(logsDir, "frankenphp.stderr.log"))
 	return cmd

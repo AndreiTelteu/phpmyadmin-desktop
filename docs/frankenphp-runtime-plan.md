@@ -108,9 +108,9 @@ which applies the same traversal/symlink checks as the archive extractors).
   the archive is verified before extraction and the checked hash is stored in
   the install marker.
 - When no official checksum is published for an asset (this is the case for
-  the phpMyAdmin GitHub source tarball and for the phpMyAdmin/themes `master`
-  branch archive the Darkwolf theme comes from; branch archives move and
-  upstream publishes no checksum), the installer records
+  the phpMyAdmin official all-languages distribution ZIP and for the
+  phpMyAdmin/themes `master` branch archive the Darkwolf theme comes from;
+  branch archives move and upstream publishes no checksum), the installer records
   `checksumVerified: false` in the `install.json` marker and surfaces that
   limitation in session status diagnostics instead of inventing a hash.
 - Extraction is traversal-guarded for both ZIP and `.tar.gz`: absolute paths,
@@ -285,9 +285,11 @@ The existing `frankenphp-classic-smoke` GitHub Actions job verifies the public o
 
  ## Known limitations (documented, intentional)
 
-- phpMyAdmin comes from the GitHub source tarball, which has **no official
-  upstream checksum**; installs record `checksumVerified: false` and the
-  status surface says so. FrankenPHP ZIPs are verified against upstream
+- phpMyAdmin comes from the official all-languages distribution ZIP, which
+  includes Composer runtime dependencies such as `vendor/autoload.php` and
+  therefore needs no local Composer install. No official release-bound checksum
+  is published for this download URL, so installs record
+  `checksumVerified: false`; FrankenPHP ZIPs are verified against upstream
   `hashes.json` when present.
 - The Darkwolf theme tracks the unversioned `master` branch of
   `phpmyadmin/themes` (`master-snapshot` cache key): branch archives move

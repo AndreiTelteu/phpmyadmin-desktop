@@ -148,7 +148,7 @@ func (m *Manager) Ensure(ctx context.Context, component string, progress *progre
 	}
 
 	finalDir := m.componentDir(component, info.Version)
-	if marker, err := m.readMarker(finalDir); err == nil {
+	if marker, err := m.readMarker(finalDir); err == nil && marker.URL == info.URL {
 		if progress != nil {
 			progress.MarkDone(component, marker.Version)
 		}
@@ -163,7 +163,7 @@ func (m *Manager) Ensure(ctx context.Context, component string, progress *progre
 
 	// Re-check after acquiring: another process may have finished the
 	// install while we were waiting for the lock.
-	if marker, err := m.readMarker(finalDir); err == nil {
+	if marker, err := m.readMarker(finalDir); err == nil && marker.URL == info.URL {
 		if progress != nil {
 			progress.MarkDone(component, marker.Version)
 		}
@@ -171,7 +171,7 @@ func (m *Manager) Ensure(ctx context.Context, component string, progress *progre
 	}
 
 	archiveExt := ".zip"
-	if component == ComponentPHPMyAdmin || strings.HasSuffix(info.URL, ".tar.gz") {
+	if strings.HasSuffix(info.URL, ".tar.gz") {
 		archiveExt = ".tar.gz"
 	}
 	if progress != nil {

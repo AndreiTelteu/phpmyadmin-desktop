@@ -260,32 +260,36 @@ func TestEnsureChecksumMismatchRejected(t *testing.T) {
 	}
 }
 
-func TestEnsurePhpMyAdminRecordsUnverifiedChecksum(t *testing.T) {
+func TestEnsurePhpMyAdminDistributionIncludesComposerDependencies(t *testing.T) {
 	root := t.TempDir()
+	archive := writeTestZip(t, map[string]string{
+		"phpMyAdmin-5.2.2-all-languages/index.php":           "<?php",
+		"phpMyAdmin-5.2.2-all-languages/vendor/autoload.php": "<?php return [];",
+	}, nil)
 	dl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gz := gzip.NewWriter(w)
-		tw := tar.NewWriter(gz)
-		body := "<?php"
-		tw.WriteHeader(&tar.Header{Name: "pma-5.2.2/index.php", Mode: 0o644, Size: int64(len(body))})
-		tw.Write([]byte(body))
-		tw.Close()
-		gz.Close()
+		data, err := os.ReadFile(archive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write(data)
 	}))
 	defer dl.Close()
 
 	m := NewManager(root)
 	m.lookup = func(ctx context.Context, component string) (*ComponentDownload, error) {
-		return &ComponentDownload{Version: "5.2.2", URL: dl.URL}, nil
+		return &ComponentDownload{Version: "5.2.2", URL: dl.URL + "/phpMyAdmin-5.2.2-all-languages.zip"}, nil
 	}
 	dir, marker, err := m.Ensure(context.Background(), ComponentPHPMyAdmin, nil)
 	if err != nil {
 		t.Fatalf("ensure pma: %v", err)
 	}
 	if marker.ChecksumVerified {
-		t.Fatal("phpMyAdmin source tarball must be recorded as unverified")
+		t.Fatal("phpMyAdmin distribution without an official checksum must be recorded as unverified")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "index.php")); err != nil {
-		t.Fatalf("expected flattened tree with index.php: %v", err)
+	for _, required := range []string{"index.php", filepath.Join("vendor", "autoload.php")} {
+		if _, err := os.Stat(filepath.Join(dir, required)); err != nil {
+			t.Fatalf("official phpMyAdmin distribution must install %s: %v", required, err)
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(dir, InstallMarkerFile))
 	if err != nil {

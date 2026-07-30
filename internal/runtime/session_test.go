@@ -270,7 +270,7 @@ func newSeededSessionRoot(t *testing.T) (string, *Manager) {
 		case ComponentPMAThemeDarkwolf:
 			return &ComponentDownload{Version: themeVersionSnapshot, URL: "https://example.test/themes.zip"}, nil
 		default:
-			return &ComponentDownload{Version: "x", URL: "https://example.test/pma.tar.gz"}, nil
+			return &ComponentDownload{Version: "x", URL: "https://example.test/pma.zip"}, nil
 		}
 	}
 	seedMarkers := map[string]string{
@@ -278,9 +278,14 @@ func newSeededSessionRoot(t *testing.T) (string, *Manager) {
 		ComponentPHPMyAdmin:       "x",
 		ComponentPMAThemeDarkwolf: themeVersionSnapshot,
 	}
+	seedURLs := map[string]string{
+		ComponentFrankenPHP:       "https://example.test/f.zip",
+		ComponentPHPMyAdmin:       "https://example.test/pma.zip",
+		ComponentPMAThemeDarkwolf: "https://example.test/themes.zip",
+	}
 	for component, version := range seedMarkers {
 		dir := filepath.Join(root, component, version)
-		if err := m.writeMarker(dir, &InstallMarker{Version: version, ChecksumVerified: false}); err != nil {
+		if err := m.writeMarker(dir, &InstallMarker{Version: version, URL: seedURLs[component], ChecksumVerified: false}); err != nil {
 			t.Fatal(err)
 		}
 	}
