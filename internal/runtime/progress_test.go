@@ -1,9 +1,8 @@
 package runtime
 
 import (
-	"archive/tar"
+	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -153,7 +152,7 @@ func TestDownloadIndeterminateWithoutContentLength(t *testing.T) {
 func TestEnsureAllDownloadsConcurrentlyAndAggregates(t *testing.T) {
 	root := t.TempDir()
 	frankenBody := smallZipBytes(t)
-	pmaBody := pmaTarGzBytes(t)
+	pmaBody := pmaZipBytes(t)
 	themeBody := darkwolfZipBytes(t)
 
 	frankenSrv := slowChunkedServer(t, frankenBody, len(frankenBody)/8+1, 25*time.Millisecond)
@@ -170,7 +169,7 @@ func TestEnsureAllDownloadsConcurrentlyAndAggregates(t *testing.T) {
 	}
 	urls := map[string]string{
 		ComponentFrankenPHP:       frankenSrv.URL,
-		ComponentPHPMyAdmin:       pmaSrv.URL,
+		ComponentPHPMyAdmin:       pmaSrv.URL + "/phpMyAdmin-5.2.2-all-languages.zip",
 		ComponentPMAThemeDarkwolf: themeSrv.URL,
 	}
 	checksums := map[string]string{
@@ -274,18 +273,24 @@ func TestEnsureAllDownloadsConcurrentlyAndAggregates(t *testing.T) {
 	}
 }
 
-func pmaTarGzBytes(t *testing.T) []byte {
+func pmaZipBytes(t *testing.T) []byte {
 	t.Helper()
 	buf := new(bytes.Buffer)
-	gz := gzip.NewWriter(buf)
-	tw := tar.NewWriter(gz)
+	zw := zip.NewWriter(buf)
 	body := "<?php"
-	tw.WriteHeader(&tar.Header{Name: "pma-5.2.2/index.php", Mode: 0o644, Size: int64(len(body))})
-	tw.Write([]byte(body))
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+	for name, content := range map[string]string{
+		"phpMyAdmin-5.2.2-all-languages/index.php":           body,
+		"phpMyAdmin-5.2.2-all-languages/vendor/autoload.php": "<?php return [];",
+	} {
+		fw, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := gz.Close(); err != nil {
+	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()

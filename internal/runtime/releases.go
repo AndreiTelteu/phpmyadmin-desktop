@@ -19,7 +19,7 @@ const (
 	frankenPHPAssetName   = "frankenphp-windows-x86_64.zip"
 	frankenPHPHashesAsset = "hashes.json"
 	phpMyAdminTagsURL     = "https://api.github.com/repos/phpmyadmin/phpmyadmin/tags?per_page=100"
-	phpMyAdminArchiveURL  = "https://github.com/phpmyadmin/phpmyadmin/archive/refs/tags/%s.tar.gz"
+	phpMyAdminArchiveURL  = "https://files.phpmyadmin.net/phpMyAdmin/%s/phpMyAdmin-%s-all-languages.zip"
 	githubAPIUserAgent    = "phpMyAdmin-Desktop"
 )
 
@@ -174,14 +174,20 @@ func fetchFrankenPHPChecksum(ctx context.Context, hashesURL, assetName string) (
 }
 
 // LatestPHPMyAdminDownload resolves the latest stable phpMyAdmin release tag
-// and its GitHub source tarball. phpMyAdmin does not publish checksums for
-// the GitHub-generated tarballs, so ChecksumSHA256 stays empty.
+// to its official all-languages distribution ZIP. Unlike GitHub's source
+// archive, this package contains vendor/autoload.php and all Composer runtime
+// dependencies phpMyAdmin needs; no Composer executable is required locally.
+// The public download URL does not provide a release-bound checksum here, so
+// ChecksumSHA256 stays empty and the install marker records that limitation.
 func LatestPHPMyAdminDownload(ctx context.Context) (*ComponentDownload, error) {
-	version, tarball, err := latestPHPMyAdminRelease(ctx)
+	version, _, err := latestPHPMyAdminRelease(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &ComponentDownload{Version: version, URL: tarball}, nil
+	return &ComponentDownload{
+		Version: version,
+		URL:     fmt.Sprintf(phpMyAdminArchiveURL, version, version),
+	}, nil
 }
 
 func latestPHPMyAdminRelease(ctx context.Context) (string, string, error) {
@@ -213,7 +219,7 @@ func latestPHPMyAdminRelease(ctx context.Context) (string, string, error) {
 		if !ok {
 			continue
 		}
-		return version, fmt.Sprintf(phpMyAdminArchiveURL, tag.Name), nil
+		return version, fmt.Sprintf(phpMyAdminArchiveURL, version, version), nil
 	}
 	return "", "", errors.New("stable phpMyAdmin release tag not found")
 }

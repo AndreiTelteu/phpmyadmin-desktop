@@ -69,4 +69,4 @@ If invoking direct commands, regenerate bindings after changes to exported `App`
 ## Known technical debt
 
 - The historical `wails.json`, old `frontend/wailsjs/` bindings, and shell scripts were Wails v2 artifacts. Do not revive them; use the Wails v3 application/bindings flow.
-- The version discovery paths use unauthenticated public GitHub APIs. Public rate limits apply and phpMyAdmin's generated GitHub source archive has no upstream checksum; the installer records that limitation. Secure credential storage and full Windows end-to-end runtime validation remain outstanding.
+- The version discovery paths use unauthenticated public GitHub APIs. Public rate limits apply and phpMyAdmin's official all-languages distribution ZIP has no release-bound upstream checksum; the installer records that limitation. The distribution includes `vendor/autoload.php` and needs no Composer on the end-user machine. Secure credential storage and full Windows end-to-end runtime validation remain outstanding.
