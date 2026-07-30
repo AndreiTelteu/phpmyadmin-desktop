@@ -167,6 +167,10 @@ func TestCaddyfileQuotesWindowsPathsWithSpaces(t *testing.T) {
 func TestFrankenPHPCommandUsesSessionPHPIniViaPHPRC(t *testing.T) {
 	phpIni := filepath.Join(t.TempDir(), "session", "php.ini")
 	cmd := buildFrankenPHPCommand(`C:\runtime`, `C:\session\Caddyfile`, phpIni, t.TempDir())
+	// buildFrankenPHPCommand opens its caller-owned diagnostic log files.
+	// Release them in this construction-only test so Windows can remove the
+	// temporary directory during t.Cleanup.
+	defer closeCommandLogs(cmd)
 
 	if strings.Contains(strings.Join(cmd.Args, " "), "ini_file_path") {
 		t.Fatalf("FrankenPHP command must not pass unsupported ini_file_path arguments: %v", cmd.Args)
