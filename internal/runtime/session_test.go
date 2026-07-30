@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -133,14 +134,17 @@ func TestScrubForDiagnostics(t *testing.T) {
 }
 
 func TestCaddyfileBindsLoopbackAndClassicMode(t *testing.T) {
-	caddy := BuildCaddyfile("127.0.0.1", 8123, "C:/data/pma", "C:/data/sessions/x/php.ini")
+	caddy := BuildCaddyfile("127.0.0.1", 8123, "C:/data/pma")
 	if !strings.Contains(caddy, "http://127.0.0.1:8123") {
 		t.Fatal("Caddyfile must bind the loopback port")
 	}
-	if !strings.Contains(caddy, "root * \"C:/data/pma\"") || !strings.Contains(caddy, "ini_file_path \"C:/data/sessions/x/php.ini\"") {
-		t.Fatalf("Caddyfile paths must be quoted as one token, got:\n%s", caddy)
+	if !strings.Contains(caddy, "root * \"C:/data/pma\"") {
+		t.Fatalf("Caddyfile root path must be quoted as one token, got:\n%s", caddy)
 	}
-	if !strings.Contains(caddy, "php_server") {
+	if strings.Contains(caddy, "ini_file_path") {
+		t.Fatalf("ini_file_path is not a supported php_server subdirective, got:\n%s", caddy)
+	}
+	if !strings.Contains(caddy, "php_server\n") {
 		t.Fatal("Caddyfile must use classic mode (php_server)")
 	}
 	if strings.Contains(caddy, "worker") {
@@ -153,14 +157,23 @@ func TestCaddyfileBindsLoopbackAndClassicMode(t *testing.T) {
 
 func TestCaddyfileQuotesWindowsPathsWithSpaces(t *testing.T) {
 	pmaDir := `C:\Users\Andrei\AppData\Local\phpMyAdmin Desktop\runtime\sessions\connection	oken\phpmyadmin`
-	phpIni := `C:\Users\Andrei\AppData\Local\phpMyAdmin Desktop\runtime\sessions\connection	oken\php.ini`
-	caddy := BuildCaddyfile("127.0.0.1", 8123, pmaDir, phpIni)
+	caddy := BuildCaddyfile("127.0.0.1", 8123, pmaDir)
 
 	if !strings.Contains(caddy, "root * "+strconv.Quote(pmaDir)) {
 		t.Fatalf("Caddyfile root must quote a Windows path containing spaces, got:\n%s", caddy)
 	}
-	if !strings.Contains(caddy, "ini_file_path "+strconv.Quote(phpIni)) {
-		t.Fatalf("Caddyfile ini path must quote a Windows path containing spaces, got:\n%s", caddy)
+}
+
+func TestFrankenPHPCommandUsesSessionPHPIniViaPHPRC(t *testing.T) {
+	phpIni := filepath.Join(t.TempDir(), "session", "php.ini")
+	cmd := buildFrankenPHPCommand(`C:\runtime`, `C:\session\Caddyfile`, phpIni, t.TempDir())
+
+	if strings.Contains(strings.Join(cmd.Args, " "), "ini_file_path") {
+		t.Fatalf("FrankenPHP command must not pass unsupported ini_file_path arguments: %v", cmd.Args)
+	}
+	want := "PHPRC=" + filepath.Dir(phpIni)
+	if !slices.Contains(cmd.Env, want) {
+		t.Fatalf("FrankenPHP command must select the session php.ini using %q, env=%v", want, cmd.Env)
 	}
 }
 

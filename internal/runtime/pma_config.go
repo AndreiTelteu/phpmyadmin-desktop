@@ -45,19 +45,20 @@ func (m *Manager) BuildPHPIni(runtimeDir string) (string, error) {
 }
 
 // BuildCaddyfile returns a classic-mode FrankenPHP site bound strictly to
-// loopback. The admin API is disabled so no extra local port is opened.
-func BuildCaddyfile(host string, port int, pmaDir, phpIniPath string) string {
+// loopback. PHP configuration is selected by the child process's PHPRC
+// environment variable, not inside php_server: current FrankenPHP releases
+// reject ini_file_path as a php_server subdirective. The admin API is disabled
+// so no extra local port is opened.
+func BuildCaddyfile(host string, port int, pmaDir string) string {
 	return fmt.Sprintf(`{
 	admin off
 }
 
 http://%s:%d {
 	root * %s
-	php_server {
-		ini_file_path %s
-	}
+	php_server
 }
-`, host, port, quoteCaddyPath(pmaDir), quoteCaddyPath(phpIniPath))
+`, host, port, quoteCaddyPath(pmaDir))
 }
 
 // quoteCaddyPath emits a single Caddyfile token for an absolute filesystem
