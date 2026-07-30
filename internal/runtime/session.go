@@ -424,13 +424,13 @@ func (s *Session) startAttempt(serverID string) (string, error) {
 	listener.Close()
 
 	caddyPath := filepath.Join(sessDir, "Caddyfile")
-	caddy := BuildCaddyfile("127.0.0.1", httpPort, filepath.ToSlash(pmaDir), filepath.ToSlash(phpIniPath))
+	caddy := BuildCaddyfile("127.0.0.1", httpPort, filepath.ToSlash(pmaDir))
 	if err := os.WriteFile(caddyPath, []byte(caddy), 0o600); err != nil {
 		return fail(fmt.Errorf("write Caddyfile: %w", err))
 	}
 
 	s.setPhase(PhaseStarting, "Starting the FrankenPHP runtime…")
-	cmd := buildFrankenPHPCommand(frankenDir, caddyPath, logsDir)
+	cmd := buildFrankenPHPCommand(frankenDir, caddyPath, phpIniPath, logsDir)
 	if err := s.spawn(cmd); err != nil {
 		closeCommandLogs(cmd)
 		return fail(fmt.Errorf("start FrankenPHP: %w", err))
@@ -523,15 +523,18 @@ func (s *Session) cleanup() {
 	}
 }
 
-// buildFrankenPHPCommand constructs the classic-mode child process. Output is
-// redirected to bounded session logs instead of a console, which Windows
-// GUI-subsystem applications do not have. The files stay owned by the command
-// and are explicitly closed after Wait/failed Start so Windows can remove the
-// finished session directory.
-func buildFrankenPHPCommand(frankenDir, caddyPath, logsDir string) *exec.Cmd {
+// buildFrankenPHPCommand constructs the classic-mode child process. PHP reads
+// the per-session php.ini through PHPRC; ini_file_path is not a supported
+// php_server subdirective in current FrankenPHP releases. Output is redirected
+// to bounded session logs instead of a console, which Windows GUI-subsystem
+// applications do not have. The files stay owned by the command and are
+// explicitly closed after Wait/failed Start so Windows can remove the finished
+// session directory.
+func buildFrankenPHPCommand(frankenDir, caddyPath, phpIniPath, logsDir string) *exec.Cmd {
 	exe := filepath.Join(frankenDir, frankenphpExe)
 	cmd := exec.Command(exe, "run", "--config", caddyPath, "--adapter", "caddyfile")
 	cmd.Dir = frankenDir
+	cmd.Env = append(os.Environ(), "PHPRC="+filepath.Dir(phpIniPath))
 	cmd.Stdout = openLogTail(filepath.Join(logsDir, "frankenphp.stdout.log"))
 	cmd.Stderr = openLogTail(filepath.Join(logsDir, "frankenphp.stderr.log"))
 	return cmd
