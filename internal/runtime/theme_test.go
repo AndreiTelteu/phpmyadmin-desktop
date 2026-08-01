@@ -97,7 +97,7 @@ func TestEnsureDarkwolfThemeTraversalRejected(t *testing.T) {
 }
 
 func TestDarkwolfConfigValueApplied(t *testing.T) {
-	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), "db.internal", 3307)
+	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", "", ""), "db.internal", 3307)
 	cfg = ApplyThemeToPMAConfig(cfg, ThemeDefaultName)
 	if !strings.Contains(cfg, "$cfg['ThemeDefault'] = 'darkwolf';") {
 		t.Fatalf("ThemeDefault must select darkwolf, got:\n%s", cfg)

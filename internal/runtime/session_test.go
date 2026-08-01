@@ -43,23 +43,28 @@ func testServerConfig() *ServerConfig {
 	}
 }
 
-func TestPMAConfigDoesNotLeakSecrets(t *testing.T) {
+func TestPMAConfigInjectsDatabaseCredentialsForAutomaticLogin(t *testing.T) {
 	server := testServerConfig()
-	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), server.Host, server.Port)
+	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", server.Username, server.Password), server.Host, server.Port)
 
+	if !strings.Contains(cfg, "'auth_type'] = 'config'") {
+		t.Fatal("config must use config auth for automatic login")
+	}
+	if !strings.Contains(cfg, "$cfg['Servers'][$i]['user'] = 'app';") {
+		t.Fatal("config must contain the configured database username")
+	}
+	if !strings.Contains(cfg, "$cfg['Servers'][$i]['password'] = 's3cret-sentinel';") {
+		t.Fatal("config must contain the configured database password")
+	}
 	for _, sentinel := range []string{
-		server.Password,
 		server.Tunnel.Password,
 		server.Tunnel.Passphrase,
 		server.Tunnel.PrivateKey,
-		"pass-sentinel", "s3cret-sentinel", "ssh-sentinel",
+		"pass-sentinel", "ssh-sentinel",
 	} {
 		if strings.Contains(cfg, sentinel) {
-			t.Fatalf("generated config.inc.php leaks secret %q", sentinel)
+			t.Fatalf("generated config.inc.php leaks SSH secret %q", sentinel)
 		}
-	}
-	if !strings.Contains(cfg, "'auth_type'] = 'cookie'") {
-		t.Fatal("config must use cookie auth so credentials stay out of the static file")
 	}
 	if !strings.Contains(cfg, "'host'] = 'db.internal'") {
 		t.Fatal("config must point at the direct host")
@@ -67,15 +72,10 @@ func TestPMAConfigDoesNotLeakSecrets(t *testing.T) {
 	if !strings.Contains(cfg, "'port'] = '3307'") {
 		t.Fatal("non-default port must be written")
 	}
-	// Username/password have no place in the served config: cookie auth
-	// accepts them through phpMyAdmin's login form at runtime.
-	if strings.Contains(cfg, server.Username) || strings.Contains(cfg, "'user'") || strings.Contains(cfg, "'password'") {
-		t.Fatal("config must not embed database username/password directives")
-	}
 }
 
 func TestPMAConfigExplicitPort3306(t *testing.T) {
-	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), "db.internal", 3306)
+	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", "", ""), "db.internal", 3306)
 	if !strings.Contains(cfg, "$cfg['Servers'][$i]['host'] = 'db.internal';") {
 		t.Fatal("direct host must be injected")
 	}
@@ -83,14 +83,14 @@ func TestPMAConfigExplicitPort3306(t *testing.T) {
 		t.Fatalf("port 3306 must be written explicitly, got:\n%s", cfg)
 	}
 	// Zero/absent port normalizes to 3306, never to an empty directive.
-	cfg = ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), "db.internal", 0)
+	cfg = ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", "", ""), "db.internal", 0)
 	if !strings.Contains(cfg, "$cfg['Servers'][$i]['port'] = '3306';") {
 		t.Fatal("zero port must normalize to explicit 3306")
 	}
 }
 
 func TestPMAConfigAppliesExactlyOnce(t *testing.T) {
-	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), "127.0.0.1", 3306)
+	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", "", ""), "127.0.0.1", 3306)
 	if strings.Count(cfg, "'port']") != 1 {
 		t.Fatalf("port directive must appear exactly once, got:\n%s", cfg)
 	}
@@ -102,7 +102,7 @@ func TestPMAConfigAppliesExactlyOnce(t *testing.T) {
 func TestPMAConfigTunnelHostIsLoopback(t *testing.T) {
 	server := testServerConfig()
 	server.Tunnel.Enabled = true
-	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef"), "127.0.0.1", 43210)
+	cfg := ApplyServerToPMAConfig(BuildPMAConfig("0123456789abcdef0123456789abcdef", "", ""), "127.0.0.1", 43210)
 	if !strings.Contains(cfg, "'host'] = '127.0.0.1'") || !strings.Contains(cfg, "'port'] = '43210'") {
 		t.Fatalf("config must point at the local tunnel endpoint, got:\n%s", cfg)
 	}
@@ -181,13 +181,16 @@ func TestFrankenPHPCommandUsesSessionPHPIniViaPHPRC(t *testing.T) {
 	}
 }
 
-func TestContainsSecretGuard(t *testing.T) {
+func TestContainsSSHSecretGuard(t *testing.T) {
 	server := testServerConfig()
-	if err := ContainsSecret("plain text", server); err != nil {
+	if err := ContainsSSHSecret("plain text", server); err != nil {
 		t.Fatalf("clean artifact rejected: %v", err)
 	}
-	if err := ContainsSecret("password=s3cret-sentinel", server); err == nil {
-		t.Fatal("artifact embedding a credential must be rejected")
+	if err := ContainsSSHSecret("password=ssh-sentinel", server); err == nil {
+		t.Fatal("artifact embedding an SSH credential must be rejected")
+	}
+	if err := ContainsSSHSecret("password=s3cret-sentinel", server); err != nil {
+		t.Fatalf("database password is intentionally allowed in private session config: %v", err)
 	}
 }
 
@@ -343,10 +346,13 @@ func TestSessionStartEndToEndWithStubs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, sentinel := range []string{"s3cret-sentinel", "ssh-sentinel", "pass-sentinel", "id_rsa_sentinel"} {
+	for _, sentinel := range []string{"ssh-sentinel", "pass-sentinel", "id_rsa_sentinel"} {
 		if strings.Contains(string(generated), sentinel) {
-			t.Fatalf("config leaks %q", sentinel)
+			t.Fatalf("config leaks SSH credential %q", sentinel)
 		}
+	}
+	if !strings.Contains(string(generated), "$cfg['Servers'][$i]['user'] = 'app';") || !strings.Contains(string(generated), "$cfg['Servers'][$i]['password'] = 's3cret-sentinel';") {
+		t.Fatalf("config must contain database credentials for automatic login, got:\n%s", generated)
 	}
 	if !strings.Contains(string(generated), "'host'] = 'db.internal'") || !strings.Contains(string(generated), "'port'] = '3307'") {
 		t.Fatalf("direct connection host/port must be injected, got:\n%s", generated)
