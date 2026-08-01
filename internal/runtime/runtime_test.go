@@ -315,7 +315,10 @@ func TestBuildPHPIniAppendsExtensions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"extension=mysqli", "extension=pdo_mysql", "extension=mbstring", "extension_dir ="} {
+	for _, want := range []string{
+		"extension=mysqli", "extension=pdo_mysql", "extension=mbstring", "extension_dir =",
+		"upload_max_filesize = 10G", "post_max_size = 10241M",
+	} {
 		if !strings.Contains(ini, want) {
 			t.Fatalf("generated php.ini missing %q", want)
 		}

@@ -119,7 +119,7 @@ which applies the same traversal/symlink checks as the archive extractors).
   individual members are capped at 512 MiB and the whole archive at 4 GiB
   decompressed.
 
-## Generated configuration (no secrets in static files)
+## Generated configuration (session-scoped database credentials)
 
 - `php.ini`: production php.ini from the archive plus
   `extension_dir = "<runtime>/ext"` and the extensions phpMyAdmin needs
@@ -132,16 +132,16 @@ which applies the same traversal/symlink checks as the archive extractors).
   bounded log tails.
 - `config.inc.php` (per session phpMyAdmin tree, regenerated per connection):
   `blowfish_secret` is generated with `crypto/rand` (phpMyAdmin requires 32
-  chars), `auth_type = 'cookie'`, and a single server entry whose **host and
+  chars), `auth_type = 'config'`, and a single server entry whose **host and
   port are always written explicitly** — including port `3306`, so the served
   config documents its real endpoint instead of relying on phpMyAdmin's
   implicit default. The host is either the configured direct host or
   `127.0.0.1` with the tunnel's ephemeral port when the tunnel is enabled.
-  **Database username/password and SSH credentials are never injected into
-  `config.inc.php`** — cookie auth's login form accepts the database
-  credentials at runtime without persisting them into a static file, and the
-  app contains no secure alternative that would justify writing them.
-  Guards assert that a secret value appears in no generated artifact, error
+  **The database username/password from `servers.json` are written only to this
+  private per-session config** so phpMyAdmin opens already authenticated. SSH
+  credentials are never injected into `config.inc.php`; generated session
+  directories are removed when a successful session closes. Guards reject SSH
+  secret values in generated artifacts, error
   message, or diagnostic status, and unit tests scan generated output and the
   session status snapshot for known sentinel secrets.
 - `ThemeDefault = 'darkwolf'` is written only after the Darkwolf theme was

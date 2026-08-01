@@ -395,12 +395,12 @@ func (s *Session) startAttempt(serverID string) (string, error) {
 		return fail(fmt.Errorf("prepare log directory: %w", err))
 	}
 
-	pmaConfig := ApplyServerToPMAConfig(BuildPMAConfig(secret), dbHost, dbPort)
+	pmaConfig := ApplyServerToPMAConfig(BuildPMAConfig(secret, server.Username, server.Password), dbHost, dbPort)
 	// ThemeDefault is only written after the Darkwolf theme was installed
 	// into this session's tree above; a failed download/install aborted
 	// startup earlier so this can never point at a missing theme.
 	pmaConfig = ApplyThemeToPMAConfig(pmaConfig, ThemeDefaultName)
-	if err := ContainsSecret(pmaConfig, server); err != nil {
+	if err := ContainsSSHSecret(pmaConfig, server); err != nil {
 		return fail(err)
 	}
 	if err := os.WriteFile(filepath.Join(pmaDir, "config.inc.php"), []byte(pmaConfig), 0o600); err != nil {
@@ -631,15 +631,16 @@ func WaitForReady(ctx context.Context, url string, timeout time.Duration) error 
 	}
 }
 
-// ContainsSecret asserts a generated artifact does not embed credential
-// material from the connection definition.
-func ContainsSecret(artifact string, server *ServerConfig) error {
+// ContainsSSHSecret asserts a generated artifact does not embed SSH credential
+// material from the connection definition. Database credentials are intentionally
+// written only to the private per-session phpMyAdmin config so config auth can
+// sign in automatically.
+func ContainsSSHSecret(artifact string, server *ServerConfig) error {
 	for _, secret := range []string{
-		server.Password, server.Tunnel.Password,
-		server.Tunnel.Passphrase, server.Tunnel.PrivateKey,
+		server.Tunnel.Password, server.Tunnel.Passphrase, server.Tunnel.PrivateKey,
 	} {
 		if secret != "" && strings.Contains(artifact, secret) {
-			return errors.New("internal error: generated configuration would embed a credential; refusing to write it")
+			return errors.New("internal error: generated configuration would embed an SSH credential; refusing to write it")
 		}
 	}
 	return nil
