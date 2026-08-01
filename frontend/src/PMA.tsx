@@ -1,7 +1,8 @@
 import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
 import useServersStore from './serversStore';
 import { AppMark } from './brand';
-import { SessionStart, SessionStatus, SessionStop } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
+import { RefreshIcon, ReconnectIcon } from './icons';
+import { SessionReconnectTunnel, SessionStart, SessionStatus, SessionStop } from '../bindings/github.com/andreitelteu/phpmyadmin-desktop/app';
 
 type Phase = 'idle' | 'installing' | 'tunnel' | 'starting' | 'ready' | 'failed';
 
@@ -63,8 +64,12 @@ export default function PMA(params: {
     const [error, setError] = createSignal('');
     const [progress, setProgress] = createSignal<SessionProgress | null>(null);
     const [attempt, setAttempt] = createSignal(0);
+    const [reconnecting, setReconnecting] = createSignal(false);
+    const [pmaURL, setPmaURL] = createSignal('');
+    let pmaFrame: HTMLIFrameElement | undefined;
 
     const server = () => serversStore.list.find((s) => s.id === params.serverId);
+    const hasTunnel = () => !!server()?.tunnel?.enabled;
     const busy = () => phase() === 'idle' || phase() === 'installing' || phase() === 'tunnel' || phase() === 'starting';
     const downloading = () => (progress()?.components ?? []).some((c) => c.state === 'downloading');
 
@@ -97,7 +102,7 @@ export default function PMA(params: {
         try {
             const url = await SessionStart();
             clearInterval(pollTimer);
-            window.location.assign(url);
+            setPmaURL(url);
         } catch (err) {
             clearInterval(pollTimer);
             setPhase('failed');
@@ -108,6 +113,29 @@ export default function PMA(params: {
     function retry() {
         setAttempt((n) => n + 1);
         launch();
+    }
+
+    function refresh() {
+        // The embedded local phpMyAdmin page is a distinct origin from the
+        // Wails asset host, so reload it by assigning the iframe source rather
+        // than accessing contentWindow.location across origins.
+        if (pmaFrame && pmaURL()) pmaFrame.src = pmaURL();
+    }
+
+    async function reconnectTunnel() {
+        if (reconnecting() || phase() !== 'ready') return;
+        setReconnecting(true);
+        setError('');
+        try {
+            await SessionReconnectTunnel();
+            await pollStatus();
+            refresh();
+        } catch (err) {
+            setError(String(err));
+            await pollStatus();
+        } finally {
+            setReconnecting(false);
+        }
     }
 
     onMount(() => {
@@ -125,6 +153,12 @@ export default function PMA(params: {
         return message() || PHASE_LABELS[phase()];
     };
 
+    const statusBarLabel = () => {
+        if (reconnecting()) return 'Reconnecting SSH…';
+        if (error()) return 'SSH reconnect failed';
+        return PHASE_LABELS[phase()] ?? 'Session';
+    };
+
     return (
         <div class="shell">
             <header class="titlebar">
@@ -135,10 +169,42 @@ export default function PMA(params: {
                         <small>{server()?.host ? `${server()!.host}:${server()!.port || 3306}` : params.serverId}</small>
                     </span>
                 </div>
+                <div class="titlebar__spacer" />
+                <div class="titlebar__actions pma-statusbar" aria-label="phpMyAdmin session controls">
+                    <span class="pma-statusbar__state" data-state={phase()} aria-live="polite">
+                        <span class="pma-statusbar__dot" aria-hidden="true" />
+                        {statusBarLabel()}
+                    </span>
+                    <button
+                        type="button"
+                        class="iconbtn"
+                        aria-label="Refresh phpMyAdmin"
+                        title="Refresh phpMyAdmin"
+                        onClick={refresh}
+                        disabled={!pmaURL() || phase() !== 'ready' || reconnecting()}
+                    >
+                        <RefreshIcon />
+                    </button>
+                    <Show when={hasTunnel()}>
+                        <button
+                            type="button"
+                            class="iconbtn"
+                            aria-label="Reconnect SSH tunnel on the same local port"
+                            title="Reconnect SSH tunnel"
+                            onClick={reconnectTunnel}
+                            disabled={!pmaURL() || phase() !== 'ready' || reconnecting()}
+                        >
+                            <ReconnectIcon />
+                        </button>
+                    </Show>
+                </div>
             </header>
-            <main class="body">
-                <div class="stack">
-                    <section class="panel" aria-label="Session status" aria-live="polite">
+            <main class="body pma-body">
+                <Show
+                    when={pmaURL()}
+                    fallback={
+                        <div class="stack">
+                            <section class="panel" aria-label="Session status" aria-live="polite">
                         <div class="panel__head">
                             <h2 class="panel__title">{PHASE_LABELS[phase()] ?? 'Session'}</h2>
                             <Show when={busy()}>
@@ -209,8 +275,17 @@ export default function PMA(params: {
                                 </p>
                             </Show>
                         </div>
-                    </section>
-                </div>
+                            </section>
+                        </div>
+                    }
+                >
+                    <iframe
+                        ref={pmaFrame}
+                        class="pma-frame"
+                        src={pmaURL()}
+                        title="phpMyAdmin"
+                    />
+                </Show>
             </main>
         </div>
     );

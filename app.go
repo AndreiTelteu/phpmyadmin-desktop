@@ -108,6 +108,15 @@ func (a *App) SessionStatus() (string, error) {
 	return string(data), nil
 }
 
+// SessionReconnectTunnel reconnects an active SSH tunnel on its existing local
+// loopback port. It deliberately does not restart the phpMyAdmin runtime.
+func (a *App) SessionReconnectTunnel() error {
+	if a.session == nil {
+		return fmt.Errorf("this window is not attached to a dedicated connection session")
+	}
+	return a.session.ReconnectTunnel(context.Background())
+}
+
 // SessionStop tears down the session runtime and tunnel. It is idempotent.
 func (a *App) SessionStop() {
 	if a.session != nil {

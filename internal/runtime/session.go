@@ -80,6 +80,7 @@ type Session struct {
 
 	tunnel  TunnelRunner
 	cmd     *exec.Cmd
+	ctx     context.Context
 	cancel  context.CancelFunc
 	started bool
 
@@ -105,6 +106,10 @@ type TunnelRunner interface {
 	Start(ctx context.Context) error
 	Addr() string
 	Close() error
+}
+
+type tunnelReconnecter interface {
+	Reconnect(ctx context.Context) error
 }
 
 func NewSession(manager *Manager) *Session {
@@ -263,6 +268,7 @@ func (s *Session) startAttempt(serverID string) (string, error) {
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
+	s.ctx = sessionCtx
 	s.cancel = cancel
 	s.mu.Unlock()
 
@@ -465,6 +471,43 @@ func (s *Session) startAttempt(serverID string) (string, error) {
 	return url, nil
 }
 
+// ReconnectTunnel replaces the SSH client and loopback listener while retaining
+// the exact local port already configured in phpMyAdmin. It is only valid for
+// a ready SSH-backed session and does not restart FrankenPHP or regenerate its
+// config. The lifecycle mutex prevents Stop or a retry from racing the swap.
+func (s *Session) ReconnectTunnel(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	s.mu.Lock()
+	phase := s.phase
+	tunnel := s.tunnel
+	sessionCtx := s.ctx
+	s.mu.Unlock()
+	if phase != PhaseReady || tunnel == nil {
+		return errors.New("SSH tunnel is not active for this session")
+	}
+	reconnecter, ok := tunnel.(tunnelReconnecter)
+	if !ok {
+		return errors.New("SSH tunnel reconnect is unavailable")
+	}
+	if sessionCtx == nil {
+		sessionCtx = ctx
+	}
+
+	s.setPhase(PhaseTunnel, "Reconnecting the SSH tunnel on its existing local port…")
+	if err := reconnecter.Reconnect(sessionCtx); err != nil {
+		// A reconnect failure does not invalidate the running FrankenPHP session:
+		// retain its ready lifecycle so the UI can offer another reconnect attempt
+		// instead of trapping the user in a terminal failed state.
+		clean := s.scrub(fmt.Sprintf("SSH reconnect failed: %v", err))
+		s.setPhase(PhaseReady, clean)
+		return errors.New(clean)
+	}
+	s.setPhase(PhaseReady, "SSH tunnel reconnected. phpMyAdmin remains available locally.")
+	return nil
+}
+
 // Stop releases every Session resource plus the attempt's generated session
 // directory. It never fails the caller; partial teardown is always attempted
 // in reverse startup order (child/tunnel first, filesystem removal last, so
@@ -501,6 +544,7 @@ func (s *Session) cleanup() {
 	keep := s.phase == PhaseFailed && keepFailedSessionDir
 	s.cmd = nil
 	s.tunnel = nil
+	s.ctx = nil
 	s.cancel = nil
 	s.sessionDir = ""
 	s.mu.Unlock()

@@ -65,6 +65,14 @@ export function SaveServersJSON(value: string): $CancellablePromise<void> {
 }
 
 /**
+ * SessionReconnectTunnel reconnects an active SSH tunnel on its existing local
+ * loopback port. It deliberately does not restart the phpMyAdmin runtime.
+ */
+export function SessionReconnectTunnel(): $CancellablePromise<void> {
+    return $Call.ByName("main.App.SessionReconnectTunnel");
+}
+
+/**
  * SessionStart installs/reuses the runtime, optionally opens the SSH tunnel,
  * starts the FrankenPHP child process and returns the loopback URL the
  * frontend navigates to. Only available in a dedicated -serverId process.

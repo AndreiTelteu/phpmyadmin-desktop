@@ -212,6 +212,51 @@ func TestTunnelLoopbackEndToEnd(t *testing.T) {
 	}
 }
 
+func TestTunnelReconnectKeepsLoopbackPortAndForwards(t *testing.T) {
+	_, dbPort := startEchoDB(t)
+	srv := startTestSSHServer(t, "hunter2")
+	host, portStr, _ := net.SplitHostPort(srv.listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	tun := NewSSHTunnel()
+	tun.knownHostsPath = writeKnownHosts(t, net.JoinHostPort(host, portStr), srv.hostKey.PublicKey())
+	tun.Configure(TunnelParams{
+		Host: host, Port: port, Username: "tester", Password: "hunter2", AuthMethod: "password",
+		DBHost: "127.0.0.1", DBPort: dbPort,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tun.Start(ctx); err != nil {
+		t.Fatalf("start tunnel: %v", err)
+	}
+	defer tun.Close()
+	originalAddr := tun.Addr()
+	if err := tun.Reconnect(ctx); err != nil {
+		t.Fatalf("reconnect tunnel: %v", err)
+	}
+	if got := tun.Addr(); got != originalAddr {
+		t.Fatalf("reconnect must retain the phpMyAdmin-configured local endpoint: got %q want %q", got, originalAddr)
+	}
+
+	conn, err := net.DialTimeout("tcp", tun.Addr(), 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial reconnected tunnel: %v", err)
+	}
+	defer conn.Close()
+	msg := []byte("reconnected")
+	if _, err := conn.Write(msg); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, len(msg))
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		t.Fatalf("read through reconnected tunnel: %v", err)
+	}
+	if !bytes.Equal(buf, msg) {
+		t.Fatalf("echo mismatch after reconnect: got %q", buf)
+	}
+}
+
 func TestTunnelRejectsUnknownHostKey(t *testing.T) {
 	srv := startTestSSHServer(t, "hunter2")
 	_, dbPort := startEchoDB(t)

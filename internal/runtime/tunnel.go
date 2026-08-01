@@ -43,11 +43,12 @@ type SSHTunnel struct {
 	// (and known_hosts2 when present).
 	knownHostsPath string
 
-	mu       sync.Mutex
-	listener net.Listener
-	client   *ssh.Client
-	cancel   context.CancelFunc
-	closed   bool
+	mu        sync.Mutex
+	listener  net.Listener
+	client    *ssh.Client
+	cancel    context.CancelFunc
+	localPort int
+	closed    bool
 }
 
 func NewSSHTunnel() *SSHTunnel {
@@ -62,6 +63,41 @@ func (t *SSHTunnel) Configure(p TunnelParams) {
 // Start connects to the bastion, verifies the host key strictly and begins
 // accepting loopback connections to forward toward dbHost:dbPort.
 func (t *SSHTunnel) Start(ctx context.Context) error {
+	return t.start(ctx, 0)
+}
+
+// Reconnect tears down the active SSH transport and restores it on the exact
+// same loopback port. phpMyAdmin's generated session config points at that
+// port, so choosing a fresh ephemeral port here would leave the live session
+// targeting a dead endpoint.
+func (t *SSHTunnel) Reconnect(ctx context.Context) error {
+	t.mu.Lock()
+	port := t.localPort
+	active := t.listener != nil && !t.closed
+	t.mu.Unlock()
+	if port <= 0 {
+		return errors.New("SSH tunnel is not running")
+	}
+	if active {
+		if err := t.Close(); err != nil {
+			return fmt.Errorf("close SSH tunnel: %w", err)
+		}
+	}
+	if err := t.start(ctx, port); err != nil {
+		// Retain the expected port after a failed attempt so the user can retry
+		// reconnect without restarting the phpMyAdmin window.
+		t.mu.Lock()
+		t.localPort = port
+		t.mu.Unlock()
+		return fmt.Errorf("reconnect SSH tunnel on local port %d: %w", port, err)
+	}
+	return nil
+}
+
+// start opens the local listener at requestedPort. A zero port asks the OS for
+// a free ephemeral port; Reconnect supplies the original port so the already
+// running phpMyAdmin process keeps its configured endpoint.
+func (t *SSHTunnel) start(ctx context.Context, requestedPort int) error {
 	p := t.params
 	if p.Host == "" {
 		return errors.New("SSH tunnel is enabled but no bastion host is configured")
@@ -101,9 +137,12 @@ func (t *SSHTunnel) Start(ctx context.Context) error {
 		return fmt.Errorf("connect to SSH bastion %s: %w", address, knownhostsHint(err))
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(requestedPort)))
 	if err != nil {
 		client.Close()
+		if requestedPort != 0 {
+			return fmt.Errorf("reserve existing local tunnel port %d: %w", requestedPort, err)
+		}
 		return fmt.Errorf("reserve local tunnel port: %w", err)
 	}
 
@@ -112,6 +151,7 @@ func (t *SSHTunnel) Start(ctx context.Context) error {
 	t.client = client
 	t.listener = listener
 	t.cancel = cancel
+	t.localPort = listener.Addr().(*net.TCPAddr).Port
 	t.closed = false
 	t.mu.Unlock()
 
@@ -132,7 +172,7 @@ func (t *SSHTunnel) Addr() string {
 // Close stops accepting new connections and tears down the SSH client.
 func (t *SSHTunnel) Close() error {
 	t.mu.Lock()
-	if t.closed {
+	if t.closed && t.listener == nil && t.client == nil && t.cancel == nil {
 		t.mu.Unlock()
 		return nil
 	}
@@ -143,6 +183,7 @@ func (t *SSHTunnel) Close() error {
 	t.cancel = nil
 	t.listener = nil
 	t.client = nil
+	t.localPort = 0
 	t.mu.Unlock()
 
 	if cancel != nil {

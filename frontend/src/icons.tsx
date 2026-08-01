@@ -77,6 +77,22 @@ export function DatabaseIcon() {
     );
 }
 
+export function RefreshIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M13.4 6.3A5.6 5.6 0 1 0 13 10.8M13.4 6.3V2.9M13.4 6.3h-3.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    );
+}
+
+export function ReconnectIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4.6 6.2A4.8 4.8 0 0 1 12 5.1M11.4 2.8v2.7H8.7M11.4 9.8A4.8 4.8 0 0 1 4 10.9M4.6 13.2v-2.7h2.7" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    );
+}
+
 export function CloseIcon() {
     return (
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
